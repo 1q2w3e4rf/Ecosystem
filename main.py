@@ -356,7 +356,7 @@ class Predator(Entity):
         self.attack_damage = 30
         self.growth_time = 0
         self.is_baby = False
-        self.time_to_reproduce = 150
+        self.time_to_reproduce = 125
         self.vision_range = 200
         self.hunt_range = 100
         self.target_search_interval = 2
@@ -617,9 +617,9 @@ class Herbivore(Entity):
     """Класс, представляющий травоядное."""
     def __init__(self, x, y):
         """Инициализирует травоядное с заданными параметрами."""
-        super().__init__(x, y, 7, 10, 80, 60, 60, GREEN, lifespan = 1700)
+        super().__init__(x, y, 7, 10, 80, 60, 60, GREEN, lifespan = 1200)
         self.fear_distance = 45
-        self.time_to_reproduce = 85
+        self.time_to_reproduce = 150
         self.target_eat_distance = 25
         self.target_drink_distance = 25
         self.fleeing_speed_multiplier = 5
@@ -882,7 +882,7 @@ class Game:
             if self.current_music != self.day_music:
                 if self.current_music:
                     self.current_music.stop()
-                self.day_music.play(-1) 
+                self.day_music.play(-1)  # -1 означает, что музыка будет воспроизводиться в цикле
                 self.current_music = self.day_music
         else:
             if self.current_music != self.night_music:
