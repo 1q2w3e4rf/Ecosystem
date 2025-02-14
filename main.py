@@ -325,7 +325,7 @@ class Predator(Entity):
         self.attack_damage = 30
         self.growth_time = 0
         self.is_baby = False
-        self.time_to_reproduce = 95
+        self.time_to_reproduce = 40
         self.vision_range = 200
         self.hunt_range = 100
         self.target_search_interval = 2
@@ -366,7 +366,7 @@ class Predator(Entity):
 
     def on_target_reached(self, entities, resources, map_obj):
         if isinstance(self.target, Herbivore) and self.hunger > self.hunger_threshold_attack:
-            self.attack(entities, map_obj) # Передаем map_obj для создания креста
+            self.attack(entities, map_obj) 
             self.target = None
         elif isinstance(self.target, Water):
             self.is_drinking = True
@@ -390,24 +390,23 @@ class Predator(Entity):
                 self.chase_timer = 0
 
         if self.hunger >= self.hunger_desperation_threshold:
-            self.target = self.find_target(entities, resources, is_day)  # Ищем добычу
+            self.target = self.find_target(entities, resources, is_day)  
             if self.target:
                 super().update(dt, entities, resources, map_obj, water_sources, day_night_cycle)
-                return  # Прекращаем дальнейшие действия
+                return 
 
         if self.thirst > self.thirst_threshold_drink:
             self.target = self.find_water_target(water_sources)  # Ищем воду
             if self.target:
                 super().update(dt, entities, resources, map_obj, water_sources, day_night_cycle)
-                return  # Прекращаем дальнейшие действия
+                return  
 
         if self.reproductive_ready and not self.target:
             self.target = self.find_reproduction_target(entities)
             if self.target:
                 super().update(dt, entities, resources, map_obj, water_sources, day_night_cycle)
-                return #Прекращаем дальнейшие действия
+                return 
 
-        # Если ничего из вышеперечисленного, то патрулируем
         if not self.target and not self.is_drinking and is_day == False:
             self.patrol(dt, map_obj)
 
@@ -564,7 +563,7 @@ class EatingCross:
         self.hunger = 100
         self.color = YELLOW
         self.timer = 0
-        self.max_timer = 60 # Время существования креста - 60 секунд
+        self.max_timer = 60
 
     def update(self, dt):
         self.timer += dt
@@ -578,7 +577,7 @@ class Herbivore(Entity):
     def __init__(self, x, y):
         super().__init__(x, y, 7, 10, 80, 60, 60, GREEN, lifespan = 1700)
         self.fear_distance = 45
-        self.time_to_reproduce = 100
+        self.time_to_reproduce = 125
         self.target_eat_distance = 25
         self.target_drink_distance = 25
         self.fleeing_speed_multiplier = 5
@@ -744,7 +743,7 @@ class Game:
 
         self.eating_crosses = []
 
-        self.init_entities(12, 7)
+        self.init_entities(20, 10)
         self.init_resources(20)
         self.init_water_sources()
 
@@ -822,7 +821,6 @@ class Game:
 
 
     def draw(self):
-        """Эта функция нужна для отрисовки"""
         background_color = self.day_night_cycle.get_background_color()
         self.map.draw(screen, background_color)
         for resource in self.resources:
