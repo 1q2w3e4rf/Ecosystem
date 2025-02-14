@@ -25,8 +25,8 @@ YELLOW = (255,255,0)
 FPS = 60
 TILE_SIZE = 20
 
-DAY_LENGTH = 300
-NIGHT_LENGTH = 200
+DAY_LENGTH = 150
+NIGHT_LENGTH = 75
 DAY_COLOR = LIGHT_GREEN
 NIGHT_COLOR = (0, 0, 20)
 TRANSITION_DURATION = 10
@@ -57,7 +57,9 @@ class Map:
         screen.fill(background_color)
 
 class Entity:
+    """Базовый класс для всех сущностей в экосистеме."""
     def __init__(self, x, y, speed, size, max_health, max_hunger, max_thirst, color, lifespan=None):
+        """Инициализирует сущность с заданными параметрами."""
         self.x = x
         self.y = y
         self.speed = speed
@@ -102,10 +104,13 @@ class Entity:
         self.fleeing_speed_multiplier = 1.5
         self.age = 0
         self.max_age = lifespan
+        self.growth_time = 0
+        self.move_direction = (random.uniform(-1, 1), random.uniform(-1, 1))
 
         self.is_colliding_with_edge = False
 
     def update(self, dt, entities, resources, map_obj, water_sources, day_night_cycle):
+        """Обновляет состояние сущности."""
         is_day = day_night_cycle.is_day()
 
         if isinstance(self, Herbivore):
@@ -136,12 +141,27 @@ class Entity:
                 self.is_asleep = False
             return
 
-        if is_day and isinstance(self, Herbivore):
-            self.hunger += self.energy_loss_rate * dt
-            self.thirst += self.thirst_loss_rate * dt
-        elif not is_day and isinstance(self, Predator):
-            self.hunger += self.energy_loss_rate * dt
-            self.thirst += self.thirst_loss_rate * dt
+        hunger_loss = 0  # Инициализация hunger_loss
+        thirst_loss = 0  # Инициализация thirst_loss
+
+        # ИЗМЕНЕНО: Уменьшаем потребление ресурсов ночью для травоядных
+        if isinstance(self, Herbivore):
+            if is_day:
+                hunger_loss = self.energy_loss_rate * dt
+                thirst_loss = self.thirst_loss_rate * dt
+            else:
+                hunger_loss = (self.energy_loss_rate / 4) * dt  # Значительно меньше ночью
+                thirst_loss = (self.thirst_loss_rate / 4) * dt # Значительно меньше ночью
+        elif isinstance(self, Predator):
+            if not is_day:
+                hunger_loss = self.energy_loss_rate * dt
+                thirst_loss = self.thirst_loss_rate * dt
+            else:
+                hunger_loss = (self.energy_loss_rate / 4) * dt  # Значительно меньше ночью
+                thirst_loss = (self.thirst_loss_rate / 4) * dt # Значительно меньше ночью
+
+        self.hunger += hunger_loss
+        self.thirst += thirst_loss
 
         if self.hunger >= self.max_hunger or self.thirst >= self.max_thirst:
             self.health -= 1 * dt
@@ -215,10 +235,11 @@ class Entity:
         self.check_for_food_and_water(dt, entities, resources, water_sources, is_day)
         self.avoid_other_entities(dt, entities, is_day)
 
+        # Добавлено: перенос через границы карты
         self.x = self.x % map_obj.width
         self.y = self.y % map_obj.height
-
     def check_for_food_and_water(self, dt, entities, resources, water_sources, is_day):
+        """Проверяет наличие пищи и воды и устанавливает цели для их поиска."""
         if not self.target and ((isinstance(self, Herbivore) and is_day) or (isinstance(self, Predator) and not is_day)):
             if self.thirst > self.thirst_threshold_drink:
                 self.target = self.find_water_target(water_sources)
@@ -226,9 +247,11 @@ class Entity:
                 self.target = self.find_target(entities, resources, is_day)
 
     def avoid_other_entities(self, dt, entities, is_day):
+        """Избегает столкновений с другими сущностями."""
         pass
 
     def avoid_edges(self, map_obj):
+        """Избегает выхода за границы карты."""
         avoidance_distance = self.size + 20
         avoid_vector = (0, 0)
 
@@ -247,6 +270,7 @@ class Entity:
             return None
 
     def avoid_water(self, water_sources, dt, entities):
+        """Избегает приближения к воде, если поблизости есть хищники (для травоядных)."""
         if not self.target or not isinstance(self.target, Water):
             for water in water_sources:
                 dist_to_water = distance(self.x, self.y, water.x, water.y)
@@ -265,6 +289,7 @@ class Entity:
                     self.y += dy * self.speed * dt * 3
 
     def wander(self, dt, map_obj):
+        """Заставляет сущность беспорядочно бродить по карте."""
         self.wander_timer += dt
         if self.wander_timer >= self.wander_interval or self.wander_target is None or distance(self.x, self.y, self.wander_target[0], self.wander_target[1]) <= 10:
             self.wander_timer = 0
@@ -276,6 +301,7 @@ class Entity:
         self.y += dy * self.speed * dt
 
     def on_target_reached(self, entities, resources, map_obj):
+        """Выполняет действия, когда сущность достигает своей цели."""
         if isinstance(self.target, Food):
             if self.target in resources:
                 self.hunger = 0
@@ -287,9 +313,11 @@ class Entity:
             self.target = None
 
     def draw(self, screen):
+        """Отрисовывает сущность на экране."""
         pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), int(self.size))
 
     def draw_info(self, screen):
+        """Отрисовывает информацию о сущности на экране."""
         text_surface = self.font.render(
             f"Здоровье: {int(self.health)}/{self.max_health}, Голод: {int(self.hunger)}/{self.max_hunger}, Жажда: {int(self.thirst)}/{self.max_thirst}, Возраст: {int(self.age)}/{self.max_age}, Готов к размножению: {'Да' if self.reproductive_ready else 'Нет'}",
             True, WHITE
@@ -298,6 +326,7 @@ class Entity:
         screen.blit(text_surface, text_rect)
 
     def find_reproduction_target(self, entities):
+        """Находит подходящего партнера для размножения."""
         closest_mate = None
         min_distance = float('inf')
         for entity in entities:
@@ -309,6 +338,7 @@ class Entity:
         return closest_mate
 
     def find_water_target(self, water_sources):
+        """Находит ближайший источник воды."""
         closest_water = None
         min_distance = float('inf')
         for water in water_sources:
@@ -318,19 +348,20 @@ class Entity:
                 closest_water = water
         return closest_water
 
-
 class Predator(Entity):
+    """Класс, представляющий хищника."""
     def __init__(self, x, y):
-        super().__init__(x, y, 15, 10, 100, 30, 60, RED, lifespan = 1000)
+        """Инициализирует хищника с заданными параметрами."""
+        super().__init__(x, y, 15, 10, 100, 30, 60, RED, lifespan = 2000)
         self.attack_damage = 30
         self.growth_time = 0
         self.is_baby = False
-        self.time_to_reproduce = 40
+        self.time_to_reproduce = 150
         self.vision_range = 200
         self.hunt_range = 100
         self.target_search_interval = 2
         self.last_target_search = 0
-        self.hunger_threshold_attack = 5
+        self.hunger_threshold_attack = 3
         self.eating_cross = None
         self.chase_timer = 0
         self.max_chase_time = 30
@@ -348,6 +379,7 @@ class Predator(Entity):
 
 
     def find_target(self, entities, resources, is_day):
+        """Находит цель для охоты (травоядное)."""
         if self.is_drinking or self.reproductive_ready or is_day == True:
             return None
 
@@ -365,8 +397,9 @@ class Predator(Entity):
         return closest_herbivore
 
     def on_target_reached(self, entities, resources, map_obj):
+        """Выполняет действия, когда хищник достигает своей цели."""
         if isinstance(self.target, Herbivore) and self.hunger > self.hunger_threshold_attack:
-            self.attack(entities, map_obj) 
+            self.attack(entities, map_obj)
             self.target = None
         elif isinstance(self.target, Water):
             self.is_drinking = True
@@ -379,6 +412,7 @@ class Predator(Entity):
             self.target = None
 
     def update(self, dt, entities, resources, map_obj, water_sources, day_night_cycle):
+        """Обновляет состояние хищника."""
         now = pygame.time.get_ticks() / 1000.0
 
         is_day = day_night_cycle.is_day()
@@ -390,22 +424,22 @@ class Predator(Entity):
                 self.chase_timer = 0
 
         if self.hunger >= self.hunger_desperation_threshold:
-            self.target = self.find_target(entities, resources, is_day)  
+            self.target = self.find_target(entities, resources, is_day)
             if self.target:
                 super().update(dt, entities, resources, map_obj, water_sources, day_night_cycle)
-                return 
+                return
 
         if self.thirst > self.thirst_threshold_drink:
             self.target = self.find_water_target(water_sources)  # Ищем воду
             if self.target:
                 super().update(dt, entities, resources, map_obj, water_sources, day_night_cycle)
-                return  
+                return
 
         if self.reproductive_ready and not self.target:
             self.target = self.find_reproduction_target(entities)
             if self.target:
                 super().update(dt, entities, resources, map_obj, water_sources, day_night_cycle)
-                return 
+                return
 
         if not self.target and not self.is_drinking and is_day == False:
             self.patrol(dt, map_obj)
@@ -454,9 +488,11 @@ class Predator(Entity):
 
 
     def patrol(self, dt, map_obj):
+        """Патрулирует территорию в поисках добычи."""
         self.wander(dt, map_obj)
 
     def attack(self, entities, map_obj):
+        """Атакует травоядное."""
         if self.target and self.target in entities and distance(self.x, self.y, self.target.x, self.target.y) < self.size + self.target.size + 10:
             self.create_eating_cross(self.target, map_obj)
             entities.remove(self.target)
@@ -464,6 +500,7 @@ class Predator(Entity):
             self.hunger = 0
 
     def try_eat(self, entities, map_obj):
+        """Пытается съесть труп или атаковать травоядное."""
         if self.is_eating_cross and self.eating_cross:
             self.eating_cross.hunger -= 10
             if self.eating_cross.hunger <= 0:
@@ -499,6 +536,7 @@ class Predator(Entity):
                 self.is_eating_cross = True
 
     def avoid_other_entities(self, dt, entities, is_day):
+        """Избегает других сущностей."""
         if self.avoid_predator_timer > 0:
             for entity in entities:
                 if entity != self and isinstance(entity, Predator):
@@ -509,11 +547,13 @@ class Predator(Entity):
                         self.y += dy * self.speed * dt * 3
 
     def create_eating_cross(self, herbivore, map_obj):
+        """Создает труп травоядного после атаки."""
         eating_cross = EatingCross(herbivore.x, herbivore.y)
         self.eating_cross = eating_cross
         self.eating_crosses.append(eating_cross)
 
     def check_reproduce(self, entities):
+        """Проверяет возможность размножения."""
         if self.reproductive_ready and self.reproduction_cooldown <= 0:
             closest_predator = None
             min_distance = float('inf')
@@ -530,6 +570,7 @@ class Predator(Entity):
 
 
     def reproduce(self, entities, other):
+        """Размножается с другим хищником."""
         if self.reproductive_ready and other.reproductive_ready:
             new_predator = Predator(self.x, self.y)
             new_predator.size = (self.size + other.size) / 4
@@ -552,7 +593,6 @@ class Predator(Entity):
             other.reproductive_ready = False
             other.reproduction_cooldown = other.reproduction_cooldown_max
 
-            # Активируем таймер избегания после размножения
             self.avoid_predator_timer = self.avoid_predator_duration
             other.avoid_predator_timer = other.avoid_predator_duration
 
@@ -574,16 +614,21 @@ class EatingCross:
         pygame.draw.line(screen, self.color, (self.x, self.y - size), (self.x, self.y + size), 3)
 
 class Herbivore(Entity):
+    """Класс, представляющий травоядное."""
     def __init__(self, x, y):
+        """Инициализирует травоядное с заданными параметрами."""
         super().__init__(x, y, 7, 10, 80, 60, 60, GREEN, lifespan = 1700)
         self.fear_distance = 45
-        self.time_to_reproduce = 125
+        self.time_to_reproduce = 85
         self.target_eat_distance = 25
         self.target_drink_distance = 25
         self.fleeing_speed_multiplier = 5
         self.hunt_range = 50
+        self.avoid_predator_timer = 0
+        self.avoid_predator_duration = 20
 
     def find_target(self, entities, resources, is_day):
+        """Находит цель для еды (пищу)."""
         if is_day == False:
             return None
         closest_food = None
@@ -598,6 +643,7 @@ class Herbivore(Entity):
         return closest_food
 
     def update(self, dt, entities, resources, map_obj, water_sources, day_night_cycle):
+        """Обновляет состояние травоядного."""
         edge_avoidance_vector = self.avoid_edges(map_obj)
         is_day = day_night_cycle.is_day()
         if edge_avoidance_vector:
@@ -628,6 +674,7 @@ class Herbivore(Entity):
             self.check_reproduce(entities)
 
     def on_target_reached(self, entities, resources, map_obj):
+        """Выполняет действия, когда травоядное достигает своей цели."""
         if isinstance(self.target, Food):
             if self.target in resources and distance(self.x, self.y, self.target.x, self.target.y) < self.target_eat_distance:
                 self.hunger = 0
@@ -642,6 +689,7 @@ class Herbivore(Entity):
             self.target = None
 
     def check_reproduce(self, entities):
+        """Проверяет возможность размножения."""
         if self.reproductive_ready and self.reproduction_cooldown <= 0:
             closest_herbivore = None
             min_distance = float('inf')
@@ -653,14 +701,18 @@ class Herbivore(Entity):
                         closest_herbivore = entity
 
             if closest_herbivore and closest_herbivore.reproduction_cooldown <= 0:
-                self.reproduce(entities, closest_herbivore)
+                if self.growth_time == 0 and closest_herbivore.growth_time == 0:
+                    self.reproduce(entities, closest_herbivore)
+
 
     def reproduce(self, entities, other):
+        """Размножается с другим травоядным."""
         if self.reproductive_ready and other.reproductive_ready:
             new_herbivore = Herbivore(self.x, self.y)
-            new_herbivore.size = 4
-            new_herbivore.max_size = 10
+            new_herbivore.size = (self.size + other.size) / 4
+            new_herbivore.max_size = min(self.size, other.size)
             new_herbivore.is_baby = True
+            new_herbivore.growth_time = 0
             entities.append(new_herbivore)
 
             dx, dy = normalize(new_herbivore.x - self.x, new_herbivore.y - self.y)
@@ -676,6 +728,11 @@ class Herbivore(Entity):
             other.reproductive_drive = 0
             other.reproductive_ready = False
             other.reproduction_cooldown = other.reproduction_cooldown_max
+
+            self.avoid_predator_timer = self.avoid_predator_duration
+            other.avoid_predator_timer = self.avoid_predator_duration
+
+
 
 class Resource:
     def __init__(self, x, y, size, color):
@@ -732,6 +789,9 @@ class DayNightCycle:
 
 class Game:
     def __init__(self):
+        self.day_music = pygame.mixer.Sound('home2.mp3')
+        self.night_music = pygame.mixer.Sound('home.mp3')
+        self.current_music = None
         self.map = Map(WIDTH, HEIGHT, TILE_SIZE)
         self.entities = []
         self.resources = []
@@ -818,6 +878,18 @@ class Game:
                     entity.eating_crosses.remove(entity.eating_cross)
                     entity.eating_cross = None
                     break
+        if self.day_night_cycle.is_day():
+            if self.current_music != self.day_music:
+                if self.current_music:
+                    self.current_music.stop()
+                self.day_music.play(-1) 
+                self.current_music = self.day_music
+        else:
+            if self.current_music != self.night_music:
+                if self.current_music:
+                    self.current_music.stop()
+                self.night_music.play(-1)
+                self.current_music = self.night_music
 
 
     def draw(self):
