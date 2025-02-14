@@ -58,7 +58,7 @@ __Я постарался воссоздать, сделать максимал�
 
 Класс также содержит несколько свойств, таких как `attack_damage`, `growth_time`, `is_baby`, `time_to_reproduce`, `vision_range`, `hunt_range`, `target_search_interval`, `last_target_search`, `hunger_threshold_attack`, `eating_cross`, `chase_timer`, `max_chase_time`, `patrol_timer`, `patrol_interval`, `eat_timer`, `eat_interval`, `eating_crosses`, `is_eating_cross`, `has_eaten_cross`, `avoid_predator_timer`, `avoid_predator_duration`, `hunger_desperation_threshold` и другие, которые используются для управления поведением хищника.
 
-##Класс EatingCross
+## Класс EatingCross
 
 Класс `EatingCross` представляет собой класс для крестов, которые создаются после атаки хищника на травоядное. Кресты служат для того, чтобы хищник мог продолжать питаться после убийства травоядного.
 
