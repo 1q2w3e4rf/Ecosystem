@@ -374,7 +374,7 @@ class Predator(Entity):
         self.hunt_range = 120
         self.target_search_interval = 2
         self.last_target_search = 0
-        self.hunger_threshold_attack = 15
+        self.hunger_threshold_attack = 7
         self.eating_cross = None
         self.chase_timer = 0
         self.max_chase_time = 30
