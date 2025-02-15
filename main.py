@@ -370,7 +370,7 @@ class Predator(Entity):
         self.attack_damage = 30
         self.growth_time = 0
         self.is_baby = False
-        self.time_to_reproduce = 35
+        self.time_to_reproduce = 45
         self.vision_range = 200
         self.hunt_range = 120
         self.target_search_interval = 2
@@ -655,7 +655,7 @@ class Herbivore(Entity):
         """Инициализирует травоядное с заданными параметрами."""
         super().__init__(x, y, 7, 10, 70, 70, 60, GREEN, lifespan = 2000)
         self.fear_distance = 45
-        self.time_to_reproduce = 100
+        self.time_to_reproduce = 125
         self.target_eat_distance = 25
         self.target_drink_distance = 25
         self.fleeing_speed_multiplier = 5
