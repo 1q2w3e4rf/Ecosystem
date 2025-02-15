@@ -375,7 +375,7 @@ class Predator(Entity):
         self.hunt_range = 120
         self.target_search_interval = 2
         self.last_target_search = 0
-        self.hunger_threshold_attack = 7
+        self.hunger_threshold_attack = 6
         self.eating_cross = None
         self.chase_timer = 0
         self.max_chase_time = 30
@@ -848,6 +848,7 @@ class DayNightCycle:
 
 class Game:
     def __init__(self):
+        """Инициализация: музыка, карта, сущности, ресурсы, часы, выделение сущностей."""
         self.day_music = pygame.mixer.Sound('home2.mp3')
         self.night_music = pygame.mixer.Sound('home.mp3')
         self.current_music = None
@@ -859,37 +860,38 @@ class Game:
         self.last_time = pygame.time.get_ticks()
         self.hovered_entity = None
         self.day_night_cycle = DayNightCycle(DAY_LENGTH, NIGHT_LENGTH, TRANSITION_DURATION)
-        self.font = pygame.font.Font(None, 24)  # Шрифт для отображения информации
-
+        self.font = pygame.font.Font(None, 24)
         self.eating_crosses = []
-
-        self.init_entities(18, 8)
+        self.init_entities(18, 7)
         self.init_resources(100)
         self.init_water_sources()
 
     def init_entities(self, num_herbivores, num_predators):
+        """Создает начальное количество травоядных и хищников."""
         for _ in range(num_herbivores):
             x = random.randint(20, WIDTH - 20)
             y = random.randint(20, HEIGHT - 20)
             self.entities.append(Herbivore(x, y))
-
         for _ in range(num_predators):
             x = random.randint(20, WIDTH - 20)
             y = random.randint(20, HEIGHT - 20)
             self.entities.append(Predator(x, y))
 
     def init_resources(self, num_food):
+        """Создает начальное количество еды."""
         for _ in range(num_food):
             x = random.randint(20, WIDTH - 20)
             y = random.randint(20, HEIGHT - 20)
             self.resources.append(Food(x, y))
 
     def init_water_sources(self):
+        """Создает источники воды."""
         self.water_sources.append(Water(WIDTH // 4, HEIGHT // 4, 50))
         self.water_sources.append(Water(WIDTH // 2, HEIGHT // 2, 70))
         self.water_sources.append(Water(WIDTH * 3 // 4, HEIGHT * 3 // 4, 60))
 
     def run(self):
+        """Основной игровой цикл: события, обновление, отрисовка, FPS."""
         running = True
         while running:
             for event in pygame.event.get():
@@ -897,15 +899,14 @@ class Game:
                     running = False
                 if event.type == pygame.MOUSEMOTION:
                     self.check_hover(event.pos)
-
             self.update()
             self.draw()
             pygame.display.flip()
             self.clock.tick(FPS)
-
         pygame.quit()
 
     def check_hover(self, mouse_pos):
+        """Определяет, наведена ли мышь на сущность."""
         self.hovered_entity = None
         for entity in self.entities:
             if distance(mouse_pos[0], mouse_pos[1], entity.x, entity.y) < entity.size:
@@ -913,30 +914,26 @@ class Game:
                 break
 
     def update(self):
+        """Обновляет состояние игры: время, сущности, ресурсы, день/ночь, музыка."""
         now = pygame.time.get_ticks()
         dt = (now - self.last_time) / 1000.0
         self.last_time = now
-        self.day_night_cycle.update(dt)
-
         for entity in self.entities:
             entity.update(dt, self.entities, self.resources, self.map, self.water_sources, self.day_night_cycle)
-
         if random.random() < 0.01 and self.day_night_cycle.is_day():
             x = random.randint(20, WIDTH - 20)
             y = random.randint(20, HEIGHT - 20)
             self.resources.append(Food(x, y))
-
         for entity in self.entities:
             if isinstance(entity, Predator) and entity.eating_cross:
                 entity.eating_cross.update(dt)
-
-
         for entity in self.entities:
             if isinstance(entity, Predator) and entity.eating_cross:
                 if entity.eating_cross.timer >= entity.eating_cross.max_timer:
                     entity.eating_crosses.remove(entity.eating_cross)
                     entity.eating_cross = None
                     break
+        self.day_night_cycle.update(dt)
         if self.day_night_cycle.is_day():
             if self.current_music != self.day_music:
                 if self.current_music:
@@ -950,8 +947,8 @@ class Game:
                 self.night_music.play(-1)
                 self.current_music = self.night_music
 
-
     def draw(self):
+        """Отрисовывает игру: карта, ресурсы, сущности, информация, статистика."""
         background_color = self.day_night_cycle.get_background_color()
         self.map.draw(screen, background_color)
         for resource in self.resources:
@@ -962,20 +959,17 @@ class Game:
             entity.draw(screen)
             if self.hovered_entity == entity:
                 entity.draw_info(screen)
-
         for entity in self.entities:
             if isinstance(entity, Predator) and entity.eating_cross:
                 entity.eating_cross.draw(screen)
-
         num_predators = sum(1 for entity in self.entities if isinstance(entity, Predator))
         num_herbivores = sum(1 for entity in self.entities if isinstance(entity, Herbivore))
-
         info_text = f"Хищники: {num_predators}, Травоядные: {num_herbivores}"
         text_surface = self.font.render(info_text, True, RED)
         text_rect = text_surface.get_rect(bottomright=(WIDTH - 10, HEIGHT - 10))
         screen.blit(text_surface, text_rect)
 
-
+# Запуск игры
 if __name__ == '__main__':
     game = Game()
     game.run()
