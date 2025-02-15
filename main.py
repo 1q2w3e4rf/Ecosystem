@@ -655,7 +655,7 @@ class Herbivore(Entity):
         """Инициализирует травоядное с заданными параметрами."""
         super().__init__(x, y, 7, 10, 70, 70, 60, GREEN, lifespan = 2000)
         self.fear_distance = 45
-        self.time_to_reproduce = 125
+        self.time_to_reproduce = 120
         self.target_eat_distance = 25
         self.target_drink_distance = 25
         self.fleeing_speed_multiplier = 5
