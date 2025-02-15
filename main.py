@@ -363,14 +363,14 @@ class Entity:
 
 class Predator(Entity):
     """Класс, представляющий хищника."""
-    MAX_PREDATORS = 15
+    MAX_PREDATORS = 20
     def __init__(self, x, y):
         """Инициализирует хищника с заданными параметрами."""
         super().__init__(x, y, 10, 10, 100, 40, 60, RED, lifespan = 1200)
         self.attack_damage = 30
         self.growth_time = 0
         self.is_baby = False
-        self.time_to_reproduce = 45
+        self.time_to_reproduce = 50
         self.vision_range = 200
         self.hunt_range = 120
         self.target_search_interval = 2
@@ -737,11 +737,10 @@ class Herbivore(Entity):
 
     def check_reproduce(self, entities, resources):
         """Проверяет возможность размножения."""
-        # Ограничение численности травоядных
         herbivore_count = sum(1 for entity in entities if isinstance(entity, Herbivore))
-        max_herbivores = 35
+        max_herbivores = 45
         if herbivore_count >= max_herbivores:
-            return # Не размножаемся, если достигнут предел
+            return 
 
         if self.reproductive_ready and self.reproduction_cooldown <= 0:
             closest_herbivore = None
