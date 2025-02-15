@@ -370,7 +370,7 @@ class Predator(Entity):
         self.attack_damage = 30
         self.growth_time = 0
         self.is_baby = False
-        self.time_to_reproduce = 85
+        self.time_to_reproduce = 35
         self.vision_range = 200
         self.hunt_range = 120
         self.target_search_interval = 2
