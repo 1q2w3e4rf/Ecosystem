@@ -365,7 +365,7 @@ class Predator(Entity):
     """Класс, представляющий хищника."""
     def __init__(self, x, y):
         """Инициализирует хищника с заданными параметрами."""
-        super().__init__(x, y, 10, 10, 100, 40, 60, RED, lifespan = 1100)
+        super().__init__(x, y, 10, 10, 100, 40, 60, RED, lifespan = 1200)
         self.attack_damage = 30
         self.growth_time = 0
         self.is_baby = False
@@ -374,7 +374,7 @@ class Predator(Entity):
         self.hunt_range = 120
         self.target_search_interval = 2
         self.last_target_search = 0
-        self.hunger_threshold_attack = 8
+        self.hunger_threshold_attack = 15
         self.eating_cross = None
         self.chase_timer = 0
         self.max_chase_time = 30
@@ -394,6 +394,9 @@ class Predator(Entity):
     def find_target(self, entities, resources, is_day):
         """Находит цель для охоты (травоядное)."""
         if self.is_drinking or self.reproductive_ready or is_day == True:
+            return None
+
+        if self.hunger < self.hunger_threshold_attack:
             return None
 
         closest_herbivore = None
@@ -606,6 +609,23 @@ class Predator(Entity):
 
             self.avoid_predator_timer = self.avoid_predator_duration
             other.avoid_predator_timer = other.avoid_predator_duration
+
+    def check_for_food_and_water(self, dt, entities, resources, water_sources, is_day):
+        """Проверяет наличие пищи и воды и устанавливает цели для их поиска."""
+        if not self.target:
+            if isinstance(self, Predator):
+                # Сначала приоритет еде для хищников
+                if self.hunger > self.hunger_threshold_eat:
+                    self.target = self.find_target(entities, resources, is_day)
+                elif self.thirst > self.thirst_threshold_drink:
+                    self.target = self.find_water_target(water_sources)
+                elif self.reproductive_ready:
+                    self.target = self.find_reproduction_target(entities)
+            else:
+                if self.thirst > self.thirst_threshold_drink:
+                    self.target = self.find_water_target(water_sources)
+                elif self.hunger > self.hunger_threshold_eat:
+                    self.target = self.find_target(entities, resources, is_day)
 
 class EatingCross:
     def __init__(self, x, y):
@@ -916,7 +936,7 @@ class Game:
             if self.current_music != self.day_music:
                 if self.current_music:
                     self.current_music.stop()
-                self.day_music.play(-1)
+                self.day_music.play(-1)  # -1 означает, что музыка будет воспроизводиться в цикле
                 self.current_music = self.day_music
         else:
             if self.current_music != self.night_music:
