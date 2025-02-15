@@ -29,7 +29,7 @@ DAY_LENGTH = 250
 NIGHT_LENGTH = 150
 DAY_COLOR = LIGHT_GREEN
 NIGHT_COLOR = (0, 0, 20)
-TRANSITION_DURATION = 15
+TRANSITION_DURATION = 10
 
 # Функции помощники
 def distance(x1, y1, x2, y2):
@@ -363,13 +363,14 @@ class Entity:
 
 class Predator(Entity):
     """Класс, представляющий хищника."""
+    MAX_PREDATORS = 15
     def __init__(self, x, y):
         """Инициализирует хищника с заданными параметрами."""
         super().__init__(x, y, 10, 10, 100, 40, 60, RED, lifespan = 1200)
         self.attack_damage = 30
         self.growth_time = 0
         self.is_baby = False
-        self.time_to_reproduce = 55
+        self.time_to_reproduce = 85
         self.vision_range = 200
         self.hunt_range = 120
         self.target_search_interval = 2
@@ -384,7 +385,7 @@ class Predator(Entity):
         self.eat_interval = 20
         self.eating_crosses = []
         self.is_eating_cross = False
-        self.has_eaten_cross = False
+        self.has_eaten_cross = True
         self.eat_efficiency = 0.75  # Процент голода, который утоляется за один раз
         self.wake_up_delay = random.uniform(0, 50)  # Случайная задержка пробуждения
         self.avoid_predator_timer = 0
@@ -430,14 +431,13 @@ class Predator(Entity):
 
         is_day = day_night_cycle.is_day()
 
-        # Постепенное пробуждение (ночь)
         if not is_day and self.is_asleep:
             if self.wake_up_delay <= 0:
                 self.is_asleep = False
                 self.sleep = 0
             else:
                 self.wake_up_delay -= dt
-                return  # Выходим из update, пока не пришло время просыпаться
+                return
 
         if now - self.last_target_search >= self.target_search_interval:
             self.last_target_search = now
@@ -566,9 +566,11 @@ class Predator(Entity):
         eating_cross = EatingCross(herbivore.x, herbivore.y)
         self.eating_cross = eating_cross
         self.eating_crosses.append(eating_cross)
-
     def check_reproduce(self, entities):
         """Проверяет возможность размножения."""
+        predator_count = sum(1 for entity in entities if isinstance(entity, Predator))
+        if predator_count >= Predator.MAX_PREDATORS:
+            return
         if self.reproductive_ready and self.reproduction_cooldown <= 0:
             closest_predator = None
             min_distance = float('inf')
@@ -585,6 +587,10 @@ class Predator(Entity):
 
     def reproduce(self, entities, other):
         """Размножается с другим хищником."""
+        predator_count = sum(1 for entity in entities if isinstance(entity, Predator))
+        if predator_count >= Predator.MAX_PREDATORS:
+            return
+
         if self.reproductive_ready and other.reproductive_ready:
             new_predator = Predator(self.x, self.y)
             new_predator.size = (self.size + other.size) / 4
@@ -614,7 +620,6 @@ class Predator(Entity):
         """Проверяет наличие пищи и воды и устанавливает цели для их поиска."""
         if not self.target:
             if isinstance(self, Predator):
-                # Сначала приоритет еде для хищников
                 if self.hunger > self.hunger_threshold_eat:
                     self.target = self.find_target(entities, resources, is_day)
                 elif self.thirst > self.thirst_threshold_drink:
@@ -648,9 +653,9 @@ class Herbivore(Entity):
     """Класс, представляющий травоядное."""
     def __init__(self, x, y):
         """Инициализирует травоядное с заданными параметрами."""
-        super().__init__(x, y, 7, 10, 70, 70, 60, GREEN, lifespan = 1500)
+        super().__init__(x, y, 7, 10, 70, 70, 60, GREEN, lifespan = 2000)
         self.fear_distance = 45
-        self.time_to_reproduce = 150
+        self.time_to_reproduce = 100
         self.target_eat_distance = 25
         self.target_drink_distance = 25
         self.fleeing_speed_multiplier = 5
@@ -936,7 +941,7 @@ class Game:
             if self.current_music != self.day_music:
                 if self.current_music:
                     self.current_music.stop()
-                self.day_music.play(-1)  # -1 означает, что музыка будет воспроизводиться в цикле
+                self.day_music.play(-1)
                 self.current_music = self.day_music
         else:
             if self.current_music != self.night_music:
@@ -962,13 +967,12 @@ class Game:
             if isinstance(entity, Predator) and entity.eating_cross:
                 entity.eating_cross.draw(screen)
 
-        # Подсчет и отображение количества хищников и травоядных
         num_predators = sum(1 for entity in self.entities if isinstance(entity, Predator))
         num_herbivores = sum(1 for entity in self.entities if isinstance(entity, Herbivore))
 
         info_text = f"Хищники: {num_predators}, Травоядные: {num_herbivores}"
-        text_surface = self.font.render(info_text, True, WHITE)
-        text_rect = text_surface.get_rect(bottomright=(WIDTH - 10, HEIGHT - 10))  # Правый нижний угол
+        text_surface = self.font.render(info_text, True, RED)
+        text_rect = text_surface.get_rect(bottomright=(WIDTH - 10, HEIGHT - 10))
         screen.blit(text_surface, text_rect)
 
 
