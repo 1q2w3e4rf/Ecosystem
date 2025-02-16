@@ -5,7 +5,6 @@ import time
 from collections import deque
 import pygame.math
 
-# Конфигурация
 WIDTH = 800
 HEIGHT = 600
 FPS = 60
@@ -17,7 +16,6 @@ DAY_COLOR = (144, 238, 144)
 NIGHT_COLOR = (0, 0, 20)
 TRANSITION_DURATION = 10
 
-# Цвета
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED = (255, 0, 0)
@@ -26,21 +24,18 @@ BLUE = (0, 0, 255)
 BROWN = (139, 69, 19)
 YELLOW = (255, 255, 0)
 
-# Настройки игры
 INITIAL_HERBIVORE_COUNT = 18
 INITIAL_PREDATOR_COUNT = 7
 INITIAL_FOOD_COUNT = 100
 MAX_HERBIVORE_COUNT = 45
 MAX_PREDATOR_COUNT = 20
-FOOD_SPAWN_PROBABILITY = 0.01
+FOOD_SPAWN_PROBABILITY = 0.005
 
-# Инициализация Pygame
 pygame.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("EcoSim")
 clock = pygame.time.Clock()
 
-# Функции помощники
 def distance(x1, y1, x2, y2):
     return math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
 
@@ -56,7 +51,6 @@ def lerp_color(color1, color2, t):
     b = int(max(0, min(255, color1[2] + (color2[2] - color1[2]) * t)))
     return (r, g, b)
 
-# Классы
 class Map:
     def __init__(self, width, height, tile_size):
         self.width = width
@@ -107,7 +101,7 @@ class DayNightCycle:
         self.transition_duration = transition_duration
         self.cycle_duration = day_length + night_length + 2 * transition_duration
         self.timer = 0
-        self.time_scale = 1  # Возможность ускорения/замедления времени
+        self.time_scale = 1
 
     def update(self, dt):
         self.timer = (self.timer + dt * self.time_scale) % self.cycle_duration
@@ -193,7 +187,7 @@ class Entity(pygame.sprite.Sprite):
     @x.setter
     def x(self, value):
         self.position.x = value
-        self.rect.center = (int(self.position.x), int(self.position.y))  # Обновляем rect
+        self.rect.center = (int(self.position.x), int(self.position.y))  
 
     @property
     def y(self):
@@ -202,7 +196,7 @@ class Entity(pygame.sprite.Sprite):
     @y.setter
     def y(self, value):
         self.position.y = value
-        self.rect.center = (int(self.position.x), int(self.position.y))  # Обновляем rect
+        self.rect.center = (int(self.position.x), int(self.position.y))
 
 
     def update(self, dt, ecosystem):
@@ -314,7 +308,7 @@ class Entity(pygame.sprite.Sprite):
                 target_x, target_y = self.target.x, self.target.y
 
             dx, dy = normalize(target_x - self.x, target_y - self.y)
-            self.move_direction = pygame.math.Vector2(dx, dy)  # Обновляем направление движения
+            self.move_direction = pygame.math.Vector2(dx, dy)
 
             self.position += self.move_direction * self.speed * dt
 
@@ -325,9 +319,7 @@ class Entity(pygame.sprite.Sprite):
             if (isinstance(self, Herbivore) and is_day) or (isinstance(self, Predator) and not is_day):
                 self.wander(dt, ecosystem.map)
 
-            # Применяем move_direction даже при отсутствии цели, чтобы сущность продолжала двигаться
             self.position += self.move_direction * self.speed * dt
-
 
         if self.reproductive_drive >= self.time_to_reproduce:
             self.reproductive_ready = True
@@ -341,7 +333,7 @@ class Entity(pygame.sprite.Sprite):
         # Добавлено: перенос через границы карты
         self.position.x = self.position.x % ecosystem.map.width
         self.position.y = self.position.y % ecosystem.map.height
-        self.rect.center = (int(self.position.x), int(self.position.y))  # Обновляем rect
+        self.rect.center = (int(self.position.x), int(self.position.y))
 
     def avoid_other_entities(self, dt, entities, is_day):
         """Избегает столкновений с другими сущностями."""
@@ -384,7 +376,7 @@ class Entity(pygame.sprite.Sprite):
                 if not is_blocked and dist_to_water < water.size + self.size + 10:
                     dx, dy = normalize(self.x - water.x, self.y - water.y)
                     self.position += pygame.math.Vector2(dx, dy) * self.speed * dt * 3
-                    self.rect.center = (int(self.position.x), int(self.position.y))  # Обновляем rect
+                    self.rect.center = (int(self.position.x), int(self.position.y)) 
 
     def wander(self, dt, map_obj):
         """Заставляет сущность беспорядочно бродить по карте."""
@@ -394,12 +386,11 @@ class Entity(pygame.sprite.Sprite):
             self.wander_interval = random.randint(3, 8)
             self.wander_target = (random.randint(20, map_obj.width - 20), random.randint(20, map_obj.height - 20))
 
-        # Вычисляем направление к точке wander_target
         dx, dy = normalize(self.wander_target[0] - self.x, self.wander_target[1] - self.y)
-        self.move_direction = pygame.math.Vector2(dx, dy) # Обновляем направление движения
+        self.move_direction = pygame.math.Vector2(dx, dy) 
 
         self.position += self.move_direction * self.speed * dt
-        self.rect.center = (int(self.position.x), int(self.position.y))  # Обновляем rect
+        self.rect.center = (int(self.position.x), int(self.position.y))
 
     def on_target_reached(self, ecosystem):
         """Выполняет действия, когда сущность достигает своей цели."""
@@ -609,7 +600,7 @@ class Predator(Entity):
             self.create_eating_cross(self.target, ecosystem.map)
             self.target.die(ecosystem)
             self.target = None
-            self.hunger = max(0, self.hunger - self.max_hunger * self.eat_efficiency)  # Обнуляем голод
+            self.hunger = max(0, self.hunger - self.max_hunger * self.eat_efficiency)
 
     def try_eat(self, ecosystem):
         """Пытается съесть труп или атаковать травоядное."""
@@ -653,7 +644,7 @@ class Predator(Entity):
                     if dist < self.avoidance_distance:
                         dx, dy = normalize(self.x - entity.x, self.y - entity.y)
                         self.position += pygame.math.Vector2(dx, dy) * self.speed * dt * 3
-                        self.rect.center = (int(self.position.x), int(self.position.y))  # Обновляем rect
+                        self.rect.center = (int(self.position.x), int(self.position.y))  
 
     def create_eating_cross(self, herbivore, map_obj):
         """Создает труп травоядного после атаки."""
@@ -765,7 +756,6 @@ class Herbivore(Entity):
         edge_avoidance_vector = self.avoid_edges(ecosystem.map)
         is_day = ecosystem.day_night_cycle.is_day()
 
-        # Постепенное пробуждение
         if is_day and self.is_asleep:
             if self.wake_up_delay <= 0:
                 self.is_asleep = False
@@ -834,7 +824,6 @@ class Herbivore(Entity):
 
     def reproduce(self, ecosystem, other):
         """Размножается с другим травоядным."""
-        # Ограничение численности травоядных
         herbivore_count = sum(1 for entity in ecosystem.entities if isinstance(entity, Herbivore))
         if herbivore_count >= MAX_HERBIVORE_COUNT:
             return
@@ -993,39 +982,36 @@ class Game:
                 if event.key == pygame.K_SPACE:
                     self.show_entity_info = not self.show_entity_info
                 elif event.key == pygame.K_p:
-                    self.is_paused = not self.is_paused  # Переключение состояния паузы
-                elif event.key == pygame.K_f:  # Добавлено: спавн еды по нажатию 'f'
+                    self.is_paused = not self.is_paused  
+                elif event.key == pygame.K_f: 
                     x = random.randint(0, self.width)
                     y = random.randint(0, self.height)
                     self.ecosystem.add_resource(Food(x, y))
-                elif event.key == pygame.K_PLUS or event.key == pygame.K_EQUALS:  # '+' для ускорения
+                elif event.key == pygame.K_PLUS or event.key == pygame.K_EQUALS:
                     self.ecosystem.day_night_cycle.time_scale *= 1.1
-                elif event.key == pygame.K_MINUS:  # '-' для замедления
+                elif event.key == pygame.K_MINUS: 
                     self.ecosystem.day_night_cycle.time_scale /= 1.1
-                elif event.key == pygame.K_1:  # 1 - нормальная скорость
+                elif event.key == pygame.K_1:
                     self.ecosystem.day_night_cycle.time_scale = 1
 
     def update(self, dt):
         """Обновляет состояние игры."""
-        if self.is_paused:  # Если игра на паузе, не обновляем ничего
+        if self.is_paused:  
             return
 
         self.ecosystem.day_night_cycle.update(dt)
 
-        # Обновление сущностей
         for entity in self.ecosystem.entities:
             entity.update(dt, self.ecosystem)
 
-        # Спавн еды
         if random.random() < FOOD_SPAWN_PROBABILITY:
             x = random.randint(0, self.width)
             y = random.randint(0, self.height)
             self.ecosystem.add_resource(Food(x, y))
 
-        # Подсчет и обновление FPS
         self.frame_count += 1
         current_time = time.time()
-        if current_time - self.last_fps_update >= 1.0:  # Обновляем FPS каждую секунду
+        if current_time - self.last_fps_update >= 1.0:
             self.fps = self.frame_count
             self.frame_count = 0
             self.last_fps_update = current_time
@@ -1035,25 +1021,20 @@ class Game:
         background_color = self.ecosystem.day_night_cycle.get_background_color()
         self.ecosystem.map.draw(self.screen, background_color)
 
-        # Отрисовка еды
         for food in self.ecosystem.resources:
             food.draw(self.screen)
 
-        # Отрисовка воды
         for water in self.ecosystem.water_sources:
             water.draw(self.screen)
 
-        # Отрисовка сущностей
         for entity in self.ecosystem.entities:
             entity.draw(self.screen)
             if self.show_entity_info:
                 entity.draw_info(self.screen)
 
-        # Отображение FPS
         fps_text = self.debug_font.render(f"FPS: {self.fps}", True, WHITE)
         self.screen.blit(fps_text, (10, 10))
 
-        # Отображение кол-ва сущностей
         herbivore_count = sum(1 for entity in self.ecosystem.entities if isinstance(entity, Herbivore))
         predator_count = sum(1 for entity in self.ecosystem.entities if isinstance(entity, Predator))
         entity_count_text = self.debug_font.render(
@@ -1061,7 +1042,6 @@ class Game:
         )
         self.screen.blit(entity_count_text, self.entity_count_pos)
 
-        # Отображение состояния паузы
         if self.is_paused:
             pause_text = self.debug_font.render("PAUSED", True, WHITE)
             text_rect = pause_text.get_rect(center=(self.width // 2, self.height // 2))
