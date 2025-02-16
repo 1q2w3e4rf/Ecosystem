@@ -177,7 +177,7 @@ class Entity(pygame.sprite.Sprite):
         self.max_age = lifespan
         self.growth_time = 0
         self.move_direction = pygame.math.Vector2(random.uniform(-1, 1), random.uniform(-1, 1))
-        self.rect = pygame.Rect(int(self.position.x - self.size), int(self.position.y - self.size), 2 * self.size, 2 * self.size)
+        self.rect = pygame.Rect(int(self.position.x - self.size), int(self.position.y - self.size), 2 * self.size, 2 * self.size)  # Для столкновений
         self.is_colliding_with_edge = False
 
     @property
@@ -927,6 +927,7 @@ class Water:
 
 class Game:
     """Основной класс игры."""
+
     def __init__(self, width, height):
         """Инициализирует игру."""
         pygame.init()
@@ -942,15 +943,16 @@ class Game:
         self.last_fps_update = time.time()
         self.fps = 0
         self.frame_count = 0
-        self.show_entity_info = False
+        self.show_entity_info = False  # Показывать информацию о выбранной сущности
+        self.selected_entity = None  # Выбранная сущность
         self.is_paused = False
         self.entity_count_pos = (10, 40)
         self.music_playing = False
-        self.music_file = "Home.mp3"
+        self.music_file = "bg_music.mp3"
         self.create_initial_entities()
         self.create_initial_resources()
         self.create_initial_water_sources()
-        self.load_music() # Загрузка музыки
+        self.load_music()
 
     def load_music(self):
         """Загружает и подготавливает музыку."""
@@ -1020,6 +1022,14 @@ class Game:
                     self.ecosystem.day_night_cycle.time_scale /= 1.1
                 elif event.key == pygame.K_1:
                     self.ecosystem.day_night_cycle.time_scale = 1
+            elif event.type == pygame.MOUSEMOTION:
+                if not self.is_paused:
+                    mouse_x, mouse_y = event.pos
+                    self.selected_entity = None
+                    for entity in self.ecosystem.entities:
+                        if distance(mouse_x, mouse_y, entity.x, entity.y) <= entity.size:
+                            self.selected_entity = entity
+                            break
 
     def update(self, dt):
         """Обновляет состояние игры."""
@@ -1056,7 +1066,7 @@ class Game:
 
         for entity in self.ecosystem.entities:
             entity.draw(self.screen)
-            if self.show_entity_info:
+            if self.selected_entity == entity and self.show_entity_info:
                 entity.draw_info(self.screen)
 
         fps_text = self.debug_font.render(f"FPS: {self.fps}", True, WHITE)
