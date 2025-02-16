@@ -29,7 +29,7 @@ INITIAL_PREDATOR_COUNT = 7
 INITIAL_FOOD_COUNT = 100
 MAX_HERBIVORE_COUNT = 45
 MAX_PREDATOR_COUNT = 20
-FOOD_SPAWN_PROBABILITY = 0.005
+FOOD_SPAWN_PROBABILITY = 0.004
 
 pygame.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -187,7 +187,7 @@ class Entity(pygame.sprite.Sprite):
     @x.setter
     def x(self, value):
         self.position.x = value
-        self.rect.center = (int(self.position.x), int(self.position.y))  
+        self.rect.center = (int(self.position.x), int(self.position.y))
 
     @property
     def y(self):
@@ -376,7 +376,7 @@ class Entity(pygame.sprite.Sprite):
                 if not is_blocked and dist_to_water < water.size + self.size + 10:
                     dx, dy = normalize(self.x - water.x, self.y - water.y)
                     self.position += pygame.math.Vector2(dx, dy) * self.speed * dt * 3
-                    self.rect.center = (int(self.position.x), int(self.position.y)) 
+                    self.rect.center = (int(self.position.x), int(self.position.y))
 
     def wander(self, dt, map_obj):
         """Заставляет сущность беспорядочно бродить по карте."""
@@ -387,7 +387,7 @@ class Entity(pygame.sprite.Sprite):
             self.wander_target = (random.randint(20, map_obj.width - 20), random.randint(20, map_obj.height - 20))
 
         dx, dy = normalize(self.wander_target[0] - self.x, self.wander_target[1] - self.y)
-        self.move_direction = pygame.math.Vector2(dx, dy) 
+        self.move_direction = pygame.math.Vector2(dx, dy)
 
         self.position += self.move_direction * self.speed * dt
         self.rect.center = (int(self.position.x), int(self.position.y))
@@ -644,7 +644,7 @@ class Predator(Entity):
                     if dist < self.avoidance_distance:
                         dx, dy = normalize(self.x - entity.x, self.y - entity.y)
                         self.position += pygame.math.Vector2(dx, dy) * self.speed * dt * 3
-                        self.rect.center = (int(self.position.x), int(self.position.y))  
+                        self.rect.center = (int(self.position.x), int(self.position.y))
 
     def create_eating_cross(self, herbivore, map_obj):
         """Создает труп травоядного после атаки."""
@@ -945,9 +945,32 @@ class Game:
         self.show_entity_info = False
         self.is_paused = False
         self.entity_count_pos = (10, 40)
+        self.music_playing = False
+        self.music_file = "Home.mp3"
         self.create_initial_entities()
         self.create_initial_resources()
         self.create_initial_water_sources()
+        self.load_music() # Загрузка музыки
+
+    def load_music(self):
+        """Загружает и подготавливает музыку."""
+        try:
+            pygame.mixer.music.load(self.music_file)
+        except pygame.error as e:
+            print(f"Ошибка загрузки музыки: {e}")
+            self.music_file = None
+
+    def play_music(self):
+        """Запускает воспроизведение музыки (зацикленно)."""
+        if self.music_file and not self.music_playing:
+            pygame.mixer.music.play(-1)
+            self.music_playing = True
+
+    def stop_music(self):
+        """Останавливает воспроизведение музыки."""
+        if self.music_playing:
+            pygame.mixer.music.stop()
+            self.music_playing = False
 
     def create_initial_entities(self):
         """Создает начальные сущности (травоядные, хищники)."""
@@ -982,21 +1005,25 @@ class Game:
                 if event.key == pygame.K_SPACE:
                     self.show_entity_info = not self.show_entity_info
                 elif event.key == pygame.K_p:
-                    self.is_paused = not self.is_paused  
-                elif event.key == pygame.K_f: 
+                    self.is_paused = not self.is_paused
+                    if self.is_paused:
+                        self.stop_music()
+                    else:
+                        self.play_music()
+                elif event.key == pygame.K_f:
                     x = random.randint(0, self.width)
                     y = random.randint(0, self.height)
                     self.ecosystem.add_resource(Food(x, y))
                 elif event.key == pygame.K_PLUS or event.key == pygame.K_EQUALS:
                     self.ecosystem.day_night_cycle.time_scale *= 1.1
-                elif event.key == pygame.K_MINUS: 
+                elif event.key == pygame.K_MINUS:
                     self.ecosystem.day_night_cycle.time_scale /= 1.1
                 elif event.key == pygame.K_1:
                     self.ecosystem.day_night_cycle.time_scale = 1
 
     def update(self, dt):
         """Обновляет состояние игры."""
-        if self.is_paused:  
+        if self.is_paused:
             return
 
         self.ecosystem.day_night_cycle.update(dt)
@@ -1051,11 +1078,13 @@ class Game:
 
     def run(self):
         """Запускает основной цикл игры."""
+        self.play_music()
         while self.is_running:
             dt = self.clock.tick(FPS) / 1000.0
             self.handle_input()
             self.update(dt)
             self.draw()
+        self.stop_music()
         pygame.quit()
 
 if __name__ == "__main__":
