@@ -943,12 +943,12 @@ class Game:
         self.last_fps_update = time.time()
         self.fps = 0
         self.frame_count = 0
-        self.show_entity_info = False  # Показывать информацию о выбранной сущности
-        self.selected_entity = None  # Выбранная сущность
+        self.show_entity_info = False 
+        self.selected_entity = None  
         self.is_paused = False
         self.entity_count_pos = (10, 40)
         self.music_playing = False
-        self.music_file = "bg_music.mp3"
+        self.music_file = "Home.mp3"
         self.create_initial_entities()
         self.create_initial_resources()
         self.create_initial_water_sources()
