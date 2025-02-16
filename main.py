@@ -177,7 +177,7 @@ class Entity(pygame.sprite.Sprite):
         self.max_age = lifespan
         self.growth_time = 0
         self.move_direction = pygame.math.Vector2(random.uniform(-1, 1), random.uniform(-1, 1))
-        self.rect = pygame.Rect(int(self.position.x - self.size), int(self.position.y - self.size), 2 * self.size, 2 * self.size)  # Для столкновений
+        self.rect = pygame.Rect(int(self.position.x - self.size), int(self.position.y - self.size), 2 * self.size, 2 * self.size)
         self.is_colliding_with_edge = False
 
     @property
