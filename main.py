@@ -1,15 +1,21 @@
 import pygame
 import random
 import math
+import time
+from collections import deque
+import pygame.math
 
-# Инициализация Pygame
-pygame.init()
-
-# Размеры окна
+# Конфигурация
 WIDTH = 800
 HEIGHT = 600
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Экосистема")
+FPS = 60
+TILE_SIZE = 20
+
+DAY_LENGTH = 250
+NIGHT_LENGTH = 150
+DAY_COLOR = (144, 238, 144)
+NIGHT_COLOR = (0, 0, 20)
+TRANSITION_DURATION = 10
 
 # Цвета
 WHITE = (255, 255, 255)
@@ -18,18 +24,21 @@ RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
 BROWN = (139, 69, 19)
-LIGHT_GREEN = (144, 238, 144)
-YELLOW = (255,255,0)
+YELLOW = (255, 255, 0)
 
-# Константы игры
-FPS = 60
-TILE_SIZE = 20
+# Настройки игры
+INITIAL_HERBIVORE_COUNT = 18
+INITIAL_PREDATOR_COUNT = 7
+INITIAL_FOOD_COUNT = 100
+MAX_HERBIVORE_COUNT = 45
+MAX_PREDATOR_COUNT = 20
+FOOD_SPAWN_PROBABILITY = 0.01
 
-DAY_LENGTH = 250
-NIGHT_LENGTH = 150
-DAY_COLOR = LIGHT_GREEN
-NIGHT_COLOR = (0, 0, 20)
-TRANSITION_DURATION = 10
+# Инициализация Pygame
+pygame.init()
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("EcoSim")
+clock = pygame.time.Clock()
 
 # Функции помощники
 def distance(x1, y1, x2, y2):
@@ -47,6 +56,7 @@ def lerp_color(color1, color2, t):
     b = int(max(0, min(255, color1[2] + (color2[2] - color1[2]) * t)))
     return (r, g, b)
 
+# Классы
 class Map:
     def __init__(self, width, height, tile_size):
         self.width = width
@@ -56,12 +66,79 @@ class Map:
     def draw(self, screen, background_color):
         screen.fill(background_color)
 
-class Entity:
-    """Базовый класс для всех сущностей в экосистеме."""
-    def __init__(self, x, y, speed, size, max_health, max_hunger, max_thirst, color, lifespan=None):
-        """Инициализирует сущность с заданными параметрами."""
+class ResourceManager:
+    """Управление ресурсами (музыка, изображения)."""
+    def __init__(self):
+        self.sounds = {}
+        self.images = {}
+
+    def load_sound(self, name, path):
+        if name not in self.sounds:
+            self.sounds[name] = pygame.mixer.Sound(path)
+        return self.sounds[name]
+
+    def load_image(self, name, path):
+        if name not in self.images:
+            self.images[name] = pygame.image.load(path).convert_alpha()
+        return self.images[name]
+
+class EatingCross:
+    def __init__(self, x, y):
         self.x = x
         self.y = y
+        self.hunger = 100
+        self.color = YELLOW
+        self.timer = 0
+        self.max_timer = 60
+        self.position = pygame.math.Vector2(x, y)
+
+    def update(self, dt):
+        self.timer += dt
+
+    def draw(self, screen):
+        size = 15
+        pygame.draw.line(screen, self.color, (self.x - size, self.y), (self.x + size, self.y), 3)
+        pygame.draw.line(screen, self.color, (self.x, self.y - size), (self.x, self.y + size), 3)
+
+class DayNightCycle:
+    def __init__(self, day_length, night_length, transition_duration):
+        self.day_length = day_length
+        self.night_length = night_length
+        self.transition_duration = transition_duration
+        self.cycle_duration = day_length + night_length + 2 * transition_duration
+        self.timer = 0
+        self.time_scale = 1  # Возможность ускорения/замедления времени
+
+    def update(self, dt):
+        self.timer = (self.timer + dt * self.time_scale) % self.cycle_duration
+
+    def get_time_progress(self):
+        return self.timer / self.cycle_duration
+
+    def is_day(self):
+        return self.transition_duration <= self.timer <= (self.transition_duration + self.day_length)
+
+    def get_background_color(self):
+        time_progress = self.timer
+
+        if time_progress < self.transition_duration:
+            t = time_progress / self.transition_duration
+            t = (math.sin(t * math.pi / 2))
+            return lerp_color(NIGHT_COLOR, DAY_COLOR, t)
+        elif time_progress < self.transition_duration + self.day_length:
+            return DAY_COLOR
+        elif time_progress < self.transition_duration + self.day_length + self.transition_duration:
+            t = (time_progress - self.transition_duration - self.day_length) / self.transition_duration
+            t = (math.sin(t * math.pi / 2))
+            return lerp_color(DAY_COLOR, NIGHT_COLOR, t)
+        else:
+            return NIGHT_COLOR
+
+class Entity(pygame.sprite.Sprite):
+    """Базовый класс для всех сущностей в экосистеме."""
+    def __init__(self, x, y, speed, size, max_health, max_hunger, max_thirst, color, lifespan=None):
+        super().__init__()
+        self.position = pygame.math.Vector2(x, y)
         self.speed = speed
         self.max_speed = speed
         self.size = size
@@ -105,13 +182,32 @@ class Entity:
         self.age = 0
         self.max_age = lifespan
         self.growth_time = 0
-        self.move_direction = (random.uniform(-1, 1), random.uniform(-1, 1))
-
+        self.move_direction = pygame.math.Vector2(random.uniform(-1, 1), random.uniform(-1, 1))
+        self.rect = pygame.Rect(int(self.position.x - self.size), int(self.position.y - self.size), 2 * self.size, 2 * self.size)  # Для столкновений
         self.is_colliding_with_edge = False
 
-    def update(self, dt, entities, resources, map_obj, water_sources, day_night_cycle):
+    @property
+    def x(self):
+        return self.position.x
+
+    @x.setter
+    def x(self, value):
+        self.position.x = value
+        self.rect.center = (int(self.position.x), int(self.position.y))  # Обновляем rect
+
+    @property
+    def y(self):
+        return self.position.y
+
+    @y.setter
+    def y(self, value):
+        self.position.y = value
+        self.rect.center = (int(self.position.x), int(self.position.y))  # Обновляем rect
+
+
+    def update(self, dt, ecosystem):
         """Обновляет состояние сущности."""
-        is_day = day_night_cycle.is_day()
+        is_day = ecosystem.day_night_cycle.is_day()
 
         if isinstance(self, Herbivore):
             if is_day:
@@ -166,15 +262,15 @@ class Entity:
             self.health -= 1 * dt
 
         if self.max_age is not None and self.age >= self.max_age:
-            entities.remove(self)
+            ecosystem.remove_entity(self)
             return
 
         if self.health <= 0:
-            entities.remove(self)
+            ecosystem.remove_entity(self)
             return
 
         if self.thirst >= self.max_thirst * 1.5:
-            entities.remove(self)
+            ecosystem.remove_entity(self)
             return
 
         hunger_factor = min(1, self.hunger / self.max_hunger / 2)
@@ -208,7 +304,7 @@ class Entity:
                 self.target = None
                 return
         else:
-            self.avoid_water(water_sources, dt, entities)
+            self.avoid_water(ecosystem.water_sources, dt, ecosystem.entities)
 
         # Движение к цели
         if self.target:
@@ -218,21 +314,19 @@ class Entity:
                 target_x, target_y = self.target.x, self.target.y
 
             dx, dy = normalize(target_x - self.x, target_y - self.y)
-            self.move_direction = (dx, dy)  # Обновляем направление движения
+            self.move_direction = pygame.math.Vector2(dx, dy)  # Обновляем направление движения
 
-            self.x += self.move_direction[0] * self.speed * dt
-            self.y += self.move_direction[1] * self.speed * dt
+            self.position += self.move_direction * self.speed * dt
 
             if self.target and distance(self.x, self.y, target_x, target_y) <= 10:
-                self.on_target_reached(entities, resources, map_obj)
+                self.on_target_reached(ecosystem)
 
         else:
             if (isinstance(self, Herbivore) and is_day) or (isinstance(self, Predator) and not is_day):
-                self.wander(dt, map_obj)
+                self.wander(dt, ecosystem.map)
 
             # Применяем move_direction даже при отсутствии цели, чтобы сущность продолжала двигаться
-            self.x += self.move_direction[0] * self.speed * dt
-            self.y += self.move_direction[1] * self.speed * dt
+            self.position += self.move_direction * self.speed * dt
 
 
         if self.reproductive_drive >= self.time_to_reproduce:
@@ -241,41 +335,35 @@ class Entity:
         if self.reproduction_cooldown > 0:
             self.reproduction_cooldown -= dt
 
-        self.check_for_food_and_water(dt, entities, resources, water_sources, is_day)
-        self.avoid_other_entities(dt, entities, is_day)
+        self.check_for_food_and_water(dt, ecosystem)
+        self.avoid_other_entities(dt, ecosystem.entities, is_day)
 
         # Добавлено: перенос через границы карты
-        self.x = self.x % map_obj.width
-        self.y = self.y % map_obj.height
-
-    def check_for_food_and_water(self, dt, entities, resources, water_sources, is_day):
-        """Проверяет наличие пищи и воды и устанавливает цели для их поиска."""
-        if not self.target and ((isinstance(self, Herbivore) and is_day) or (isinstance(self, Predator) and not is_day)):
-            if self.thirst > self.thirst_threshold_drink:
-                self.target = self.find_water_target(water_sources)
-            elif self.hunger > self.hunger_threshold_eat:
-                self.target = self.find_target(entities, resources, is_day)
+        self.position.x = self.position.x % ecosystem.map.width
+        self.position.y = self.position.y % ecosystem.map.height
+        self.rect.center = (int(self.position.x), int(self.position.y))  # Обновляем rect
 
     def avoid_other_entities(self, dt, entities, is_day):
         """Избегает столкновений с другими сущностями."""
         pass
 
+
     def avoid_edges(self, map_obj):
         """Избегает выхода за границы карты."""
         avoidance_distance = self.size + 20
-        avoid_vector = (0, 0)
+        avoid_vector = pygame.math.Vector2(0, 0)
 
         if self.x - self.size / 2 < avoidance_distance:
-            avoid_vector = (avoidance_distance - (self.x - self.size / 2), 0)
+            avoid_vector.x = (avoidance_distance - (self.x - self.size / 2))
         elif self.x + self.size / 2 > map_obj.width - avoidance_distance:
-            avoid_vector = (map_obj.width - avoidance_distance - (self.x + self.size / 2), 0)
+            avoid_vector.x = (map_obj.width - avoidance_distance - (self.x + self.size / 2))
         elif self.y - self.size / 2 < avoidance_distance:
-            avoid_vector = (0, avoidance_distance - (self.y - self.size / 2))
+            avoid_vector.y = (avoidance_distance - (self.y - self.size / 2))
         elif self.y + self.size / 2 > map_obj.height - avoidance_distance:
-            avoid_vector = (0, map_obj.height - avoidance_distance - (self.y + self.size / 2))
+            avoid_vector.y = (map_obj.height - avoidance_distance - (self.y + self.size / 2))
 
         if avoid_vector != (0, 0):
-            return normalize(*avoid_vector)
+            return avoid_vector.normalize()
         else:
             return None
 
@@ -295,8 +383,8 @@ class Entity:
 
                 if not is_blocked and dist_to_water < water.size + self.size + 10:
                     dx, dy = normalize(self.x - water.x, self.y - water.y)
-                    self.x += dx * self.speed * dt * 3
-                    self.y += dy * self.speed * dt * 3
+                    self.position += pygame.math.Vector2(dx, dy) * self.speed * dt * 3
+                    self.rect.center = (int(self.position.x), int(self.position.y))  # Обновляем rect
 
     def wander(self, dt, map_obj):
         """Заставляет сущность беспорядочно бродить по карте."""
@@ -308,17 +396,17 @@ class Entity:
 
         # Вычисляем направление к точке wander_target
         dx, dy = normalize(self.wander_target[0] - self.x, self.wander_target[1] - self.y)
-        self.move_direction = (dx, dy) # Обновляем направление движения
+        self.move_direction = pygame.math.Vector2(dx, dy) # Обновляем направление движения
 
-        self.x += self.speed * dt * self.move_direction[0]
-        self.y += self.speed * dt * self.move_direction[1]
+        self.position += self.move_direction * self.speed * dt
+        self.rect.center = (int(self.position.x), int(self.position.y))  # Обновляем rect
 
-    def on_target_reached(self, entities, resources, map_obj):
+    def on_target_reached(self, ecosystem):
         """Выполняет действия, когда сущность достигает своей цели."""
         if isinstance(self.target, Food):
-            if self.target in resources:
+            if self.target in ecosystem.resources:
                 self.hunger = 0
-                resources.remove(self.target)
+                ecosystem.remove_resource(self.target)
             self.target = None
         elif isinstance(self.target, Water):
             self.is_drinking = True
@@ -361,12 +449,24 @@ class Entity:
                 closest_water = water
         return closest_water
 
+    def find_nearest(self, items):
+        """Находит ближайший объект из списка."""
+        nearest = None
+        min_distance = float('inf')
+        for item in items:
+            dist = distance(self.x, self.y, item.x, item.y)
+            if dist < min_distance:
+                min_distance = dist
+                nearest = item
+        return nearest
+
 class Predator(Entity):
     """Класс, представляющий хищника."""
     MAX_PREDATORS = 20
+
     def __init__(self, x, y):
         """Инициализирует хищника с заданными параметрами."""
-        super().__init__(x, y, 10, 10, 100, 40, 60, RED, lifespan = 1200)
+        super().__init__(x, y, 10, 10, 100, 40, 60, RED, lifespan=1200)
         self.attack_damage = 30
         self.growth_time = 0
         self.is_baby = False
@@ -383,16 +483,16 @@ class Predator(Entity):
         self.patrol_interval = random.randint(2, 6)
         self.eat_timer = 0
         self.eat_interval = 20
-        self.eating_crosses = []
+        self.eating_crosses = deque(maxlen=5)
         self.is_eating_cross = False
         self.has_eaten_cross = True
-        self.eat_efficiency = 0.75  # Процент голода, который утоляется за один раз
-        self.wake_up_delay = random.uniform(0, 50)  # Случайная задержка пробуждения
+        self.eat_efficiency = 0.75
+        self.wake_up_delay = random.uniform(0, 50)
         self.avoid_predator_timer = 0
         self.avoid_predator_duration = 20
         self.hunger_desperation_threshold = self.max_hunger * 0.75
 
-    def find_target(self, entities, resources, is_day):
+    def find_target(self, ecosystem, is_day):
         """Находит цель для охоты (травоядное)."""
         if self.is_drinking or self.reproductive_ready or is_day == True:
             return None
@@ -402,7 +502,7 @@ class Predator(Entity):
 
         closest_herbivore = None
         min_distance = float('inf')
-        for entity in entities:
+        for entity in ecosystem.entities:
             if isinstance(entity, Herbivore):
                 dist = distance(self.x, self.y, entity.x, entity.y)
                 if dist < min_distance and dist <= self.hunt_range:
@@ -410,26 +510,26 @@ class Predator(Entity):
                     closest_herbivore = entity
         return closest_herbivore
 
-    def on_target_reached(self, entities, resources, map_obj):
+    def on_target_reached(self, ecosystem):
         """Выполняет действия, когда хищник достигает своей цели."""
         if isinstance(self.target, Herbivore) and self.hunger > self.hunger_threshold_attack:
-            self.attack(entities, map_obj)
+            self.attack(ecosystem)
             self.target = None
         elif isinstance(self.target, Water):
             self.is_drinking = True
         elif isinstance(self.target, EatingCross) and self.is_eating_cross:
-            self.try_eat(entities, map_obj)
+            self.try_eat(ecosystem)
             self.target = None
         elif self.target and self.reproductive_ready and type(self.target) == type(self):
-            self.check_reproduce(entities)
+            self.check_reproduce(ecosystem)
         elif self.target and type(self.target) is tuple:
             self.target = None
 
-    def update(self, dt, entities, resources, map_obj, water_sources, day_night_cycle):
+    def update(self, dt, ecosystem):
         """Обновляет состояние хищника."""
         now = pygame.time.get_ticks() / 1000.0
 
-        is_day = day_night_cycle.is_day()
+        is_day = ecosystem.day_night_cycle.is_day()
 
         if not is_day and self.is_asleep:
             if self.wake_up_delay <= 0:
@@ -441,24 +541,24 @@ class Predator(Entity):
 
         if now - self.last_target_search >= self.target_search_interval:
             self.last_target_search = now
-            if not self.target or not isinstance(self.target, Herbivore) or self.target not in entities:
-                self.target = self.find_target(entities, resources, is_day)
+            if not self.target or not isinstance(self.target, Herbivore) or self.target not in ecosystem.entities:
+                self.target = self.find_target(ecosystem, is_day)
                 self.chase_timer = 0
 
         if self.hunger >= self.hunger_desperation_threshold:
-            self.target = self.find_target(entities, resources, is_day)
+            self.target = self.find_target(ecosystem, is_day)
             if self.target:
-                super().update(dt, entities, resources, map_obj, water_sources, day_night_cycle)
+                super().update(dt, ecosystem)
                 return
 
         if self.reproductive_ready and not self.target:
-            self.target = self.find_reproduction_target(entities)
+            self.target = self.find_reproduction_target(ecosystem.entities)
             if self.target:
-                super().update(dt, entities, resources, map_obj, water_sources, day_night_cycle)
+                super().update(dt, ecosystem)
                 return
 
         if not self.target and not self.is_drinking and is_day == False:
-            self.patrol(dt, map_obj)
+            self.patrol(dt, ecosystem.map)
 
         if self.target and isinstance(self.target, Herbivore):
             self.chase_timer += dt
@@ -466,11 +566,11 @@ class Predator(Entity):
                 self.target = None
                 self.chase_timer = 0
 
-        super().update(dt, entities, resources, map_obj, water_sources, day_night_cycle)
+        super().update(dt, ecosystem)
 
         self.reproductive_drive += dt / 2
         if self.reproductive_drive >= self.reproduction_threshold:
-            self.check_reproduce(entities)
+            self.check_reproduce(ecosystem)
 
         if self.is_baby:
             self.growth_time += dt
@@ -478,7 +578,7 @@ class Predator(Entity):
                 self.size = self.max_size
                 self.is_baby = False
 
-        self.avoid_water(water_sources, dt, entities)
+        self.avoid_water(ecosystem.water_sources, dt, ecosystem.entities)
 
         if self.hunger > self.max_hunger / 2 and is_day == False:
             self.is_asleep = False
@@ -494,7 +594,7 @@ class Predator(Entity):
             self.eat_timer += dt
             if self.eat_timer >= self.eat_interval:
                 self.eat_timer = 0
-                self.try_eat(entities, map_obj)
+                self.try_eat(ecosystem)
 
         if self.avoid_predator_timer > 0:
             self.avoid_predator_timer -= dt
@@ -503,20 +603,20 @@ class Predator(Entity):
         """Патрулирует территорию в поисках добычи."""
         self.wander(dt, map_obj)
 
-    def attack(self, entities, map_obj):
+    def attack(self, ecosystem):
         """Атакует травоядное."""
-        if self.target and self.target in entities and distance(self.x, self.y, self.target.x, self.target.y) < self.size + self.target.size + 10:
-            self.create_eating_cross(self.target, map_obj)
-            self.target.die(entities)  # Вызываем метод die у травоядного
+        if self.target and self.target in ecosystem.entities and distance(self.x, self.y, self.target.x, self.target.y) < self.size + self.target.size + 10:
+            self.create_eating_cross(self.target, ecosystem.map)
+            self.target.die(ecosystem)
             self.target = None
             self.hunger = max(0, self.hunger - self.max_hunger * self.eat_efficiency)  # Обнуляем голод
 
-    def try_eat(self, entities, map_obj):
+    def try_eat(self, ecosystem):
         """Пытается съесть труп или атаковать травоядное."""
         if self.is_eating_cross and self.eating_cross:
             eat_amount = min(10, self.eating_cross.hunger)
             self.eating_cross.hunger -= eat_amount
-            self.hunger = max(0, self.hunger - eat_amount)  # Уменьшаем голод хищника
+            self.hunger = max(0, self.hunger - eat_amount)
 
             if self.eating_cross.hunger <= 0:
                 self.hunger = max(0, self.hunger - self.max_hunger * self.eat_efficiency)
@@ -526,28 +626,22 @@ class Predator(Entity):
                 return
             return
         else:
-            closest_cross = None
-            min_distance = float('inf')
-            for cross in self.eating_crosses:
-                dist = distance(self.x, self.y, cross.x, cross.y)
-                if dist < min_distance and self.hunger > self.hunger_threshold_attack:
-                    min_distance = dist
-                    closest_cross = cross
+            closest_cross = self.find_nearest(self.eating_crosses)
             if closest_cross:
                 self.target = closest_cross
                 self.is_eating_cross = True
                 return
             closest_herbivore = None
             min_distance = float('inf')
-            for entity in entities:
+            for entity in ecosystem.entities:
                 if isinstance(entity, Herbivore):
                     dist = distance(self.x, self.y, entity.x, entity.y)
                     if dist < min_distance and dist <= self.size + entity.size + 10 and self.hunger > self.hunger_threshold_attack:
                         min_distance = dist
                         closest_herbivore = entity
             if closest_herbivore and self.hunger > self.hunger_threshold_attack:
-                self.create_eating_cross(closest_herbivore, map_obj)
-                closest_herbivore.die(entities)
+                self.create_eating_cross(closest_herbivore, ecosystem.map)
+                closest_herbivore.die(ecosystem)
                 self.is_eating_cross = True
 
     def avoid_other_entities(self, dt, entities, is_day):
@@ -558,23 +652,24 @@ class Predator(Entity):
                     dist = distance(self.x, self.y, entity.x, entity.y)
                     if dist < self.avoidance_distance:
                         dx, dy = normalize(self.x - entity.x, self.y - entity.y)
-                        self.x += dx * self.speed * dt * 3
-                        self.y += dy * self.speed * dt * 3
+                        self.position += pygame.math.Vector2(dx, dy) * self.speed * dt * 3
+                        self.rect.center = (int(self.position.x), int(self.position.y))  # Обновляем rect
 
     def create_eating_cross(self, herbivore, map_obj):
         """Создает труп травоядного после атаки."""
         eating_cross = EatingCross(herbivore.x, herbivore.y)
         self.eating_cross = eating_cross
         self.eating_crosses.append(eating_cross)
-    def check_reproduce(self, entities):
+
+    def check_reproduce(self, ecosystem):
         """Проверяет возможность размножения."""
-        predator_count = sum(1 for entity in entities if isinstance(entity, Predator))
+        predator_count = sum(1 for entity in ecosystem.entities if isinstance(entity, Predator))
         if predator_count >= Predator.MAX_PREDATORS:
             return
         if self.reproductive_ready and self.reproduction_cooldown <= 0:
             closest_predator = None
             min_distance = float('inf')
-            for entity in entities:
+            for entity in ecosystem.entities:
                 if isinstance(entity, Predator) and entity != self:
                     dist = distance(self.x, self.y, entity.x, entity.y)
                     if dist < min_distance and dist <= self.size + entity.size + 10:
@@ -583,11 +678,11 @@ class Predator(Entity):
 
             if closest_predator and closest_predator.reproduction_cooldown <= 0:
                 if self.growth_time == 0 and closest_predator.growth_time == 0:
-                    self.reproduce(entities, closest_predator)
+                    self.reproduce(ecosystem, closest_predator)
 
-    def reproduce(self, entities, other):
+    def reproduce(self, ecosystem, other):
         """Размножается с другим хищником."""
-        predator_count = sum(1 for entity in entities if isinstance(entity, Predator))
+        predator_count = sum(1 for entity in ecosystem.entities if isinstance(entity, Predator))
         if predator_count >= Predator.MAX_PREDATORS:
             return
 
@@ -597,7 +692,7 @@ class Predator(Entity):
             new_predator.max_size = min(self.size, other.size)
             new_predator.is_baby = True
             new_predator.growth_time = 0
-            entities.append(new_predator)
+            ecosystem.add_entity(new_predator)
 
             dx, dy = normalize(new_predator.x - self.x, new_predator.y - self.y)
             separation_distance = 200
@@ -616,44 +711,29 @@ class Predator(Entity):
             self.avoid_predator_timer = self.avoid_predator_duration
             other.avoid_predator_timer = other.avoid_predator_duration
 
-    def check_for_food_and_water(self, dt, entities, resources, water_sources, is_day):
+    def check_for_food_and_water(self, dt, ecosystem):
         """Проверяет наличие пищи и воды и устанавливает цели для их поиска."""
+        is_day = ecosystem.day_night_cycle.is_day()
         if not self.target:
             if isinstance(self, Predator):
                 if self.hunger > self.hunger_threshold_eat:
-                    self.target = self.find_target(entities, resources, is_day)
+                    self.target = self.find_target(ecosystem, is_day)
                 elif self.thirst > self.thirst_threshold_drink:
-                    self.target = self.find_water_target(water_sources)
+                    self.target = self.find_water_target(ecosystem.water_sources)
                 elif self.reproductive_ready:
-                    self.target = self.find_reproduction_target(entities)
+                    self.target = self.find_reproduction_target(ecosystem.entities)
             else:
                 if self.thirst > self.thirst_threshold_drink:
-                    self.target = self.find_water_target(water_sources)
+                    self.target = self.find_water_target(ecosystem.water_sources)
                 elif self.hunger > self.hunger_threshold_eat:
-                    self.target = self.find_target(entities, resources, is_day)
-
-class EatingCross:
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-        self.hunger = 100
-        self.color = YELLOW
-        self.timer = 0
-        self.max_timer = 60
-
-    def update(self, dt):
-        self.timer += dt
-
-    def draw(self, screen):
-        size = 15
-        pygame.draw.line(screen, self.color, (self.x - size, self.y), (self.x + size, self.y), 3)
-        pygame.draw.line(screen, self.color, (self.x, self.y - size), (self.x, self.y + size), 3)
+                    self.target = self.find_target(ecosystem, is_day)
 
 class Herbivore(Entity):
     """Класс, представляющий травоядное."""
+
     def __init__(self, x, y):
         """Инициализирует травоядное с заданными параметрами."""
-        super().__init__(x, y, 7, 10, 70, 70, 60, GREEN, lifespan = 2000)
+        super().__init__(x, y, 7, 10, 70, 70, 60, GREEN, lifespan=2000)
         self.fear_distance = 45
         self.time_to_reproduce = 120
         self.target_eat_distance = 25
@@ -664,13 +744,14 @@ class Herbivore(Entity):
         self.avoid_predator_duration = 20
         self.wake_up_delay = random.uniform(0, 50)
 
-    def find_target(self, entities, resources, is_day):
+    def find_target(self, ecosystem):
         """Находит цель для еды (пищу)."""
-        if is_day == False:
+        is_day = ecosystem.day_night_cycle.is_day()
+        if not is_day:
             return None
         closest_food = None
         min_distance = float('inf')
-        for resource in resources:
+        for resource in ecosystem.resources:
             if isinstance(resource, Food):
                 dist = distance(self.x, self.y, resource.x, resource.y)
                 if dist < min_distance:
@@ -679,10 +760,10 @@ class Herbivore(Entity):
 
         return closest_food
 
-    def update(self, dt, entities, resources, map_obj, water_sources, day_night_cycle):
+    def update(self, dt, ecosystem):
         """Обновляет состояние травоядного."""
-        edge_avoidance_vector = self.avoid_edges(map_obj)
-        is_day = day_night_cycle.is_day()
+        edge_avoidance_vector = self.avoid_edges(ecosystem.map)
+        is_day = ecosystem.day_night_cycle.is_day()
 
         # Постепенное пробуждение
         if is_day and self.is_asleep:
@@ -690,62 +771,57 @@ class Herbivore(Entity):
                 self.is_asleep = False
                 self.sleep = 0
             else:
-                self.wake_up_delay -= dt  # Уменьшаем задержку пробуждения
+                self.wake_up_delay -= dt
                 return
 
         if edge_avoidance_vector:
-            dx, dy = edge_avoidance_vector
-            self.x += dx * self.speed * dt * 5
-            self.y += dy * self.speed * dt * 5
+            self.position += edge_avoidance_vector * self.speed * dt * 5
+            self.rect.center = (int(self.position.x), int(self.position.y))
             return
 
         if self.reproductive_ready and not self.target:
-            self.target = self.find_reproduction_target(entities)
+            self.target = self.find_reproduction_target(ecosystem.entities)
 
         if self.is_drinking:
-            super().update(dt, entities, resources, map_obj, water_sources, day_night_cycle)
+            super().update(dt, ecosystem)
             return
 
         if not self.target or (self.target and not isinstance(self.target, Water)):
             if self.thirst > self.thirst_threshold_drink:
-                self.target = self.find_water_target(water_sources)
+                self.target = self.find_water_target(ecosystem.water_sources)
             elif self.hunger > self.hunger_threshold_eat:
-                self.target = self.find_target(entities, resources, is_day)
+                self.target = self.find_target(ecosystem)
         elif not self.target:
-            self.wander(dt, map_obj)
+            self.wander(dt, ecosystem.map)
 
-        super().update(dt, entities, resources, map_obj, water_sources, day_night_cycle)
+        super().update(dt, ecosystem)
 
         self.reproductive_drive += dt
         if self.reproductive_drive >= self.reproduction_threshold:
-            self.check_reproduce(entities, resources) # Передаем resources
+            self.check_reproduce(ecosystem)
 
-    def on_target_reached(self, entities, resources, map_obj):
+    def on_target_reached(self, ecosystem):
         """Выполняет действия, когда травоядное достигает своей цели."""
         if isinstance(self.target, Food):
-            if self.target in resources and distance(self.x, self.y, self.target.x, self.target.y) < self.target_eat_distance:
+            if self.target in ecosystem.resources and distance(self.x, self.y, self.target.x,
+                                                               self.target.y) < self.target_eat_distance:
                 self.hunger = 0
-                resources.remove(self.target)
+                ecosystem.remove_resource(self.target)
             self.target = None
         elif isinstance(self.target, Water):
             if distance(self.x, self.y, self.target.x, self.target.y) < self.target_drink_distance:
                 self.is_drinking = True
         elif self.target and self.reproductive_ready and type(self.target) == type(self):
-            self.check_reproduce(entities, resources)
+            self.check_reproduce(ecosystem)
         elif self.target and type(self.target) is tuple:
             self.target = None
 
-    def check_reproduce(self, entities, resources):
+    def check_reproduce(self, ecosystem):
         """Проверяет возможность размножения."""
-        herbivore_count = sum(1 for entity in entities if isinstance(entity, Herbivore))
-        max_herbivores = 45
-        if herbivore_count >= max_herbivores:
-            return 
-
         if self.reproductive_ready and self.reproduction_cooldown <= 0:
             closest_herbivore = None
             min_distance = float('inf')
-            for entity in entities:
+            for entity in ecosystem.entities:
                 if isinstance(entity, Herbivore) and entity != self:
                     dist = distance(self.x, self.y, entity.x, entity.y)
                     if dist < min_distance and dist <= self.size + entity.size + 10:
@@ -754,15 +830,14 @@ class Herbivore(Entity):
 
             if closest_herbivore and closest_herbivore.reproduction_cooldown <= 0:
                 if self.growth_time == 0 and closest_herbivore.growth_time == 0:
-                    self.reproduce(entities, closest_herbivore, resources) # Передаем resources
+                    self.reproduce(ecosystem, closest_herbivore)
 
-    def reproduce(self, entities, other, resources):
+    def reproduce(self, ecosystem, other):
         """Размножается с другим травоядным."""
         # Ограничение численности травоядных
-        herbivore_count = sum(1 for entity in entities if isinstance(entity, Herbivore))
-        max_herbivores = 35
-        if herbivore_count >= max_herbivores:
-            return  # Не размножаемся, если достигнут предел
+        herbivore_count = sum(1 for entity in ecosystem.entities if isinstance(entity, Herbivore))
+        if herbivore_count >= MAX_HERBIVORE_COUNT:
+            return
 
         if self.reproductive_ready and other.reproductive_ready:
             new_herbivore = Herbivore(self.x, self.y)
@@ -770,12 +845,13 @@ class Herbivore(Entity):
             new_herbivore.max_size = min(self.size, other.size)
             new_herbivore.is_baby = True
             new_herbivore.growth_time = 0
-            entities.append(new_herbivore)
+            ecosystem.add_entity(new_herbivore)
 
             dx, dy = normalize(new_herbivore.x - self.x, new_herbivore.y - self.y)
             separation_distance = 200
 
-            new_herbivore.target = (new_herbivore.x + dx * separation_distance, new_herbivore.y + dy * separation_distance)
+            new_herbivore.target = (new_herbivore.x + dx * separation_distance,
+                                    new_herbivore.y + dy * separation_distance)
             self.target = (self.x - dx * separation_distance, self.y - dy * separation_distance)
             other.target = (other.x - dx * separation_distance, other.y - dy * separation_distance)
 
@@ -788,187 +864,220 @@ class Herbivore(Entity):
 
             self.avoid_predator_timer = self.avoid_predator_duration
 
-    def die(self, entities):
+    def check_for_food_and_water(self, dt, ecosystem):
+        """Проверяет наличие пищи и воды и устанавливает цели для их поиска."""
+        is_day = ecosystem.day_night_cycle.is_day()
+
+        if not self.target:
+            if isinstance(self, Herbivore):
+                if self.thirst > self.thirst_threshold_drink:
+                    self.target = self.find_water_target(ecosystem.water_sources)
+                elif self.hunger > self.hunger_threshold_eat and is_day:
+                    self.target = self.find_target(ecosystem)
+            else:
+                if self.thirst > self.thirst_threshold_drink:
+                    self.target = self.find_water_target(ecosystem.water_sources)
+                elif self.hunger > self.hunger_threshold_eat:
+                    self.target = self.find_target(ecosystem)
+
+    def die(self, ecosystem):
         """Удаляет травоядное из экосистемы."""
-        entities.remove(self)
+        ecosystem.remove_entity(self)
 
-class Resource:
-    def __init__(self, x, y, size, color):
-        self.x = x
-        self.y = y
-        self.size = size
-        self.color = color
-
-    def draw(self, screen):
-        pygame.draw.rect(screen, self.color, (int(self.x - self.size / 2), int(self.y - self.size / 2), self.size, self.size))
-
-
-class Food(Resource):
-    def __init__(self, x, y):
-        super().__init__(x, y, 8, GREEN)
-
-
-class Water(Resource):
-    def __init__(self, x, y, size):
-        super().__init__(x, y, size, BLUE)
-
-class DayNightCycle:
-    def __init__(self, day_length, night_length, transition_duration):
-        self.day_length = day_length
-        self.night_length = night_length
-        self.transition_duration = transition_duration
-        self.cycle_duration = day_length + night_length + 2 * transition_duration
-        self.timer = 0
-
-    def update(self, dt):
-        self.timer = (self.timer + dt) % self.cycle_duration
-
-    def get_time_progress(self):
-        return self.timer / self.cycle_duration
-
-    def is_day(self):
-        return self.transition_duration <= self.timer <= (self.transition_duration + self.day_length)
-
-    def get_background_color(self):
-        time_progress = self.timer
-
-        if time_progress < self.transition_duration:
-            t = time_progress / self.transition_duration
-            t = (math.sin(t * math.pi / 2))
-            return lerp_color(NIGHT_COLOR, DAY_COLOR, t)
-        elif time_progress < self.transition_duration + self.day_length:
-            return DAY_COLOR
-        elif time_progress < self.transition_duration + self.day_length + self.transition_duration:
-            t = (time_progress - self.transition_duration - self.day_length) / self.transition_duration
-            t = (math.sin(t * math.pi / 2))
-            return lerp_color(DAY_COLOR, NIGHT_COLOR, t)
-        else:
-            return NIGHT_COLOR
-
-class Game:
-    def __init__(self):
-        """Инициализация: музыка, карта, сущности, ресурсы, часы, выделение сущностей."""
-        self.day_music = pygame.mixer.Sound('home2.mp3')
-        self.night_music = pygame.mixer.Sound('home.mp3')
-        self.current_music = None
-        self.map = Map(WIDTH, HEIGHT, TILE_SIZE)
+class Ecosystem:
+    """Контейнер для всех сущностей и ресурсов."""
+    def __init__(self, map_width, map_height):
         self.entities = []
         self.resources = []
         self.water_sources = []
-        self.clock = pygame.time.Clock()
-        self.last_time = pygame.time.get_ticks()
-        self.hovered_entity = None
+        self.map = Map(map_width, map_height, 20)
         self.day_night_cycle = DayNightCycle(DAY_LENGTH, NIGHT_LENGTH, TRANSITION_DURATION)
-        self.font = pygame.font.Font(None, 24)
-        self.eating_crosses = []
-        self.init_entities(18, 7)
-        self.init_resources(100)
-        self.init_water_sources()
 
-    def init_entities(self, num_herbivores, num_predators):
-        """Создает начальное количество травоядных и хищников."""
-        for _ in range(num_herbivores):
-            x = random.randint(20, WIDTH - 20)
-            y = random.randint(20, HEIGHT - 20)
-            self.entities.append(Herbivore(x, y))
-        for _ in range(num_predators):
-            x = random.randint(20, WIDTH - 20)
-            y = random.randint(20, HEIGHT - 20)
-            self.entities.append(Predator(x, y))
+    def add_entity(self, entity):
+        self.entities.append(entity)
 
-    def init_resources(self, num_food):
-        """Создает начальное количество еды."""
-        for _ in range(num_food):
-            x = random.randint(20, WIDTH - 20)
-            y = random.randint(20, HEIGHT - 20)
-            self.resources.append(Food(x, y))
+    def remove_entity(self, entity):
+        if entity in self.entities:
+            self.entities.remove(entity)
 
-    def init_water_sources(self):
-        """Создает источники воды."""
-        self.water_sources.append(Water(WIDTH // 4, HEIGHT // 4, 50))
-        self.water_sources.append(Water(WIDTH // 2, HEIGHT // 2, 70))
-        self.water_sources.append(Water(WIDTH * 3 // 4, HEIGHT * 3 // 4, 60))
+    def add_resource(self, resource):
+        self.resources.append(resource)
 
-    def run(self):
-        """Основной игровой цикл: события, обновление, отрисовка, FPS."""
-        running = True
-        while running:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-                if event.type == pygame.MOUSEMOTION:
-                    self.check_hover(event.pos)
-            self.update()
-            self.draw()
-            pygame.display.flip()
-            self.clock.tick(FPS)
-        pygame.quit()
+    def remove_resource(self, resource):
+        if resource in self.resources:
+            self.resources.remove(resource)
 
-    def check_hover(self, mouse_pos):
-        """Определяет, наведена ли мышь на сущность."""
-        self.hovered_entity = None
-        for entity in self.entities:
-            if distance(mouse_pos[0], mouse_pos[1], entity.x, entity.y) < entity.size:
-                self.hovered_entity = entity
-                break
+    def add_water_source(self, water):
+        self.water_sources.append(water)
 
-    def update(self):
-        """Обновляет состояние игры: время, сущности, ресурсы, день/ночь, музыка."""
-        now = pygame.time.get_ticks()
-        dt = (now - self.last_time) / 1000.0
-        self.last_time = now
-        for entity in self.entities:
-            entity.update(dt, self.entities, self.resources, self.map, self.water_sources, self.day_night_cycle)
-        if random.random() < 0.01 and self.day_night_cycle.is_day():
-            x = random.randint(20, WIDTH - 20)
-            y = random.randint(20, HEIGHT - 20)
-            self.resources.append(Food(x, y))
-        for entity in self.entities:
-            if isinstance(entity, Predator) and entity.eating_cross:
-                entity.eating_cross.update(dt)
-        for entity in self.entities:
-            if isinstance(entity, Predator) and entity.eating_cross:
-                if entity.eating_cross.timer >= entity.eating_cross.max_timer:
-                    entity.eating_crosses.remove(entity.eating_cross)
-                    entity.eating_cross = None
-                    break
-        self.day_night_cycle.update(dt)
-        if self.day_night_cycle.is_day():
-            if self.current_music != self.day_music:
-                if self.current_music:
-                    self.current_music.stop()
-                self.day_music.play(-1)
-                self.current_music = self.day_music
-        else:
-            if self.current_music != self.night_music:
-                if self.current_music:
-                    self.current_music.stop()
-                self.night_music.play(-1)
-                self.current_music = self.night_music
+    def remove_water_source(self, water):
+        if water in self.water_sources:
+            self.water_sources.remove(water)
+
+class Food:
+    """Класс, представляющий еду."""
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.size = 5
+        self.color = BROWN
+
+    def draw(self, screen):
+        pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), self.size)
+
+class Water:
+    """Класс, представляющий источник воды."""
+    def __init__(self, x, y, size):
+        self.x = x
+        self.y = y
+        self.size = size
+        self.color = BLUE
+
+    def draw(self, screen):
+        pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), self.size)
+
+class Game:
+    """Основной класс игры."""
+    def __init__(self, width, height):
+        """Инициализирует игру."""
+        pygame.init()
+        self.width = width
+        self.height = height
+        self.screen = pygame.display.set_mode((self.width, self.height))
+        pygame.display.set_caption("EcoSim")
+        self.clock = pygame.time.Clock()
+        self.is_running = True
+        self.ecosystem = Ecosystem(width, height)
+        self.resource_manager = ResourceManager()
+        self.debug_font = pygame.font.Font(None, 20)
+        self.last_fps_update = time.time()
+        self.fps = 0
+        self.frame_count = 0
+        self.show_entity_info = False
+        self.is_paused = False
+        self.entity_count_pos = (10, 40)
+        self.create_initial_entities()
+        self.create_initial_resources()
+        self.create_initial_water_sources()
+
+    def create_initial_entities(self):
+        """Создает начальные сущности (травоядные, хищники)."""
+        for _ in range(INITIAL_HERBIVORE_COUNT):
+            x = random.randint(50, self.width - 50)
+            y = random.randint(50, self.height - 50)
+            self.ecosystem.add_entity(Herbivore(x, y))
+
+        for _ in range(INITIAL_PREDATOR_COUNT):
+            x = random.randint(50, self.width - 50)
+            y = random.randint(50, self.height - 50)
+            self.ecosystem.add_entity(Predator(x, y))
+
+    def create_initial_resources(self):
+        """Создает начальные ресурсы (еду)."""
+        for _ in range(INITIAL_FOOD_COUNT):
+            x = random.randint(0, self.width)
+            y = random.randint(0, self.height)
+            self.ecosystem.add_resource(Food(x, y))
+
+    def create_initial_water_sources(self):
+        """Создает начальные источники воды."""
+        self.ecosystem.add_water_source(Water(self.width // 4, self.height // 4, 30))
+        self.ecosystem.add_water_source(Water(3 * self.width // 4, 3 * self.height // 4, 40))
+
+    def handle_input(self):
+        """Обрабатывает ввод пользователя."""
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.is_running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
+                    self.show_entity_info = not self.show_entity_info
+                elif event.key == pygame.K_p:
+                    self.is_paused = not self.is_paused  # Переключение состояния паузы
+                elif event.key == pygame.K_f:  # Добавлено: спавн еды по нажатию 'f'
+                    x = random.randint(0, self.width)
+                    y = random.randint(0, self.height)
+                    self.ecosystem.add_resource(Food(x, y))
+                elif event.key == pygame.K_PLUS or event.key == pygame.K_EQUALS:  # '+' для ускорения
+                    self.ecosystem.day_night_cycle.time_scale *= 1.1
+                elif event.key == pygame.K_MINUS:  # '-' для замедления
+                    self.ecosystem.day_night_cycle.time_scale /= 1.1
+                elif event.key == pygame.K_1:  # 1 - нормальная скорость
+                    self.ecosystem.day_night_cycle.time_scale = 1
+
+    def update(self, dt):
+        """Обновляет состояние игры."""
+        if self.is_paused:  # Если игра на паузе, не обновляем ничего
+            return
+
+        self.ecosystem.day_night_cycle.update(dt)
+
+        # Обновление сущностей
+        for entity in self.ecosystem.entities:
+            entity.update(dt, self.ecosystem)
+
+        # Спавн еды
+        if random.random() < FOOD_SPAWN_PROBABILITY:
+            x = random.randint(0, self.width)
+            y = random.randint(0, self.height)
+            self.ecosystem.add_resource(Food(x, y))
+
+        # Подсчет и обновление FPS
+        self.frame_count += 1
+        current_time = time.time()
+        if current_time - self.last_fps_update >= 1.0:  # Обновляем FPS каждую секунду
+            self.fps = self.frame_count
+            self.frame_count = 0
+            self.last_fps_update = current_time
 
     def draw(self):
-        """Отрисовывает игру: карта, ресурсы, сущности, информация, статистика."""
-        background_color = self.day_night_cycle.get_background_color()
-        self.map.draw(screen, background_color)
-        for resource in self.resources:
-            resource.draw(screen)
-        for water in self.water_sources:
-            water.draw(screen)
-        for entity in self.entities:
-            entity.draw(screen)
-            if self.hovered_entity == entity:
-                entity.draw_info(screen)
-        for entity in self.entities:
-            if isinstance(entity, Predator) and entity.eating_cross:
-                entity.eating_cross.draw(screen)
-        num_predators = sum(1 for entity in self.entities if isinstance(entity, Predator))
-        num_herbivores = sum(1 for entity in self.entities if isinstance(entity, Herbivore))
-        info_text = f"Хищники: {num_predators}, Травоядные: {num_herbivores}"
-        text_surface = self.font.render(info_text, True, RED)
-        text_rect = text_surface.get_rect(bottomright=(WIDTH - 10, HEIGHT - 10))
-        screen.blit(text_surface, text_rect)
+        """Отрисовывает игру на экране."""
+        background_color = self.ecosystem.day_night_cycle.get_background_color()
+        self.ecosystem.map.draw(self.screen, background_color)
 
-# Запуск игры
-if __name__ == '__main__':
-    game = Game()
+        # Отрисовка еды
+        for food in self.ecosystem.resources:
+            food.draw(self.screen)
+
+        # Отрисовка воды
+        for water in self.ecosystem.water_sources:
+            water.draw(self.screen)
+
+        # Отрисовка сущностей
+        for entity in self.ecosystem.entities:
+            entity.draw(self.screen)
+            if self.show_entity_info:
+                entity.draw_info(self.screen)
+
+        # Отображение FPS
+        fps_text = self.debug_font.render(f"FPS: {self.fps}", True, WHITE)
+        self.screen.blit(fps_text, (10, 10))
+
+        # Отображение кол-ва сущностей
+        herbivore_count = sum(1 for entity in self.ecosystem.entities if isinstance(entity, Herbivore))
+        predator_count = sum(1 for entity in self.ecosystem.entities if isinstance(entity, Predator))
+        entity_count_text = self.debug_font.render(
+            f"Травоядные: {herbivore_count}, Хищники: {predator_count}", True, WHITE
+        )
+        self.screen.blit(entity_count_text, self.entity_count_pos)
+
+        # Отображение состояния паузы
+        if self.is_paused:
+            pause_text = self.debug_font.render("PAUSED", True, WHITE)
+            text_rect = pause_text.get_rect(center=(self.width // 2, self.height // 2))
+            self.screen.blit(pause_text, text_rect)
+
+        pygame.display.flip()
+
+    def run(self):
+        """Запускает основной цикл игры."""
+        while self.is_running:
+            dt = self.clock.tick(FPS) / 1000.0
+            self.handle_input()
+            self.update(dt)
+            self.draw()
+        pygame.quit()
+
+if __name__ == "__main__":
+    game = Game(WIDTH, HEIGHT)
     game.run()
