@@ -10,8 +10,8 @@ HEIGHT = 600
 FPS = 60
 TILE_SIZE = 20
 
-DAY_LENGTH = 250
-NIGHT_LENGTH = 150
+DAY_LENGTH = 200
+NIGHT_LENGTH = 130
 DAY_COLOR = (144, 238, 144)
 NIGHT_COLOR = (0, 0, 20)
 TRANSITION_DURATION = 10
@@ -25,7 +25,7 @@ BROWN = (139, 69, 19)
 YELLOW = (255, 255, 0)
 
 INITIAL_HERBIVORE_COUNT = 18
-INITIAL_PREDATOR_COUNT = 7
+INITIAL_PREDATOR_COUNT = 8
 INITIAL_FOOD_COUNT = 100
 
 FOOD_SPAWN_PROBABILITY = 0.002
@@ -452,20 +452,19 @@ class Entity(pygame.sprite.Sprite):
 
 class Predator(Entity):
     """Класс, представляющий хищника."""
-    MAX_PREDATORS = 25
-
+    MAX_PREDATORS = 30
     def __init__(self, x, y):
         """Инициализирует хищника с заданными параметрами."""
-        super().__init__(x, y, 10, 10, 100, 40, 60, RED, lifespan=1600)
+        super().__init__(x, y, 10, 10, 100, 40, 60, RED, lifespan=1800)
         self.attack_damage = 30
         self.growth_time = 0
         self.is_baby = False
-        self.time_to_reproduce = 45
+        self.time_to_reproduce = 25
         self.vision_range = 200
         self.hunt_range = 120
         self.target_search_interval = 2
         self.last_target_search = 0
-        self.hunger_threshold_attack = 5
+        self.hunger_threshold_attack = 6
         self.eating_cross = None
         self.chase_timer = 0
         self.max_chase_time = 30
@@ -725,7 +724,7 @@ class Herbivore(Entity):
         """Инициализирует травоядное с заданными параметрами."""
         super().__init__(x, y, 7, 10, 70, 70, 60, GREEN, lifespan=2000)
         self.fear_distance = 45
-        self.time_to_reproduce = 100
+        self.time_to_reproduce = 118
         self.target_eat_distance = 25
         self.target_drink_distance = 25
         self.fleeing_speed_multiplier = 5
