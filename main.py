@@ -27,8 +27,7 @@ YELLOW = (255, 255, 0)
 INITIAL_HERBIVORE_COUNT = 18
 INITIAL_PREDATOR_COUNT = 7
 INITIAL_FOOD_COUNT = 100
-MAX_HERBIVORE_COUNT = 45
-MAX_PREDATOR_COUNT = 20
+
 FOOD_SPAWN_PROBABILITY = 0.004
 
 pygame.init()
@@ -453,27 +452,27 @@ class Entity(pygame.sprite.Sprite):
 
 class Predator(Entity):
     """Класс, представляющий хищника."""
-    MAX_PREDATORS = 20
+    MAX_PREDATORS = 25
 
     def __init__(self, x, y):
         """Инициализирует хищника с заданными параметрами."""
-        super().__init__(x, y, 10, 10, 100, 40, 60, RED, lifespan=1200)
+        super().__init__(x, y, 10, 10, 100, 40, 60, RED, lifespan=1600)
         self.attack_damage = 30
         self.growth_time = 0
         self.is_baby = False
-        self.time_to_reproduce = 50
+        self.time_to_reproduce = 45
         self.vision_range = 200
         self.hunt_range = 120
         self.target_search_interval = 2
         self.last_target_search = 0
-        self.hunger_threshold_attack = 6
+        self.hunger_threshold_attack = 5
         self.eating_cross = None
         self.chase_timer = 0
         self.max_chase_time = 30
         self.patrol_timer = 0
         self.patrol_interval = random.randint(2, 6)
         self.eat_timer = 0
-        self.eat_interval = 20
+        self.eat_interval = 10
         self.eating_crosses = deque(maxlen=5)
         self.is_eating_cross = False
         self.has_eaten_cross = True
@@ -721,12 +720,12 @@ class Predator(Entity):
 
 class Herbivore(Entity):
     """Класс, представляющий травоядное."""
-
+    MAX_HERBIVORE = 50
     def __init__(self, x, y):
         """Инициализирует травоядное с заданными параметрами."""
         super().__init__(x, y, 7, 10, 70, 70, 60, GREEN, lifespan=2000)
         self.fear_distance = 45
-        self.time_to_reproduce = 120
+        self.time_to_reproduce = 100
         self.target_eat_distance = 25
         self.target_drink_distance = 25
         self.fleeing_speed_multiplier = 5
@@ -825,7 +824,7 @@ class Herbivore(Entity):
     def reproduce(self, ecosystem, other):
         """Размножается с другим травоядным."""
         herbivore_count = sum(1 for entity in ecosystem.entities if isinstance(entity, Herbivore))
-        if herbivore_count >= MAX_HERBIVORE_COUNT:
+        if herbivore_count >= Herbivore.MAX_HERBIVORE:
             return
 
         if self.reproductive_ready and other.reproductive_ready:
@@ -943,8 +942,8 @@ class Game:
         self.last_fps_update = time.time()
         self.fps = 0
         self.frame_count = 0
-        self.show_entity_info = False 
-        self.selected_entity = None  
+        self.show_entity_info = False
+        self.selected_entity = None
         self.is_paused = False
         self.entity_count_pos = (10, 40)
         self.music_playing = False
